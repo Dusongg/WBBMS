@@ -57,14 +57,14 @@ func InitSystemConfigs(db *gorm.DB) {
 	// 初始化默认配置
 	configs := []model.SystemConfig{
 		{ConfigKey: model.ConfigMaxBorrowBooks, ConfigValue: "5", Description: "每个用户最多可借图书数量", ConfigType: "int", IsSystem: true},
-		{ConfigKey: model.ConfigBorrowDays, ConfigValue: "30", Description: "图书借阅期限（天）", ConfigType: "int", IsSystem: true},
+		{ConfigKey: model.ConfigBorrowDays, ConfigValue: "0", Description: "图书借阅期限（天，0表示测试模式1分钟）", ConfigType: "int", IsSystem: true},
 		{ConfigKey: model.ConfigMaxRenewTimes, ConfigValue: "2", Description: "最大续借次数", ConfigType: "int", IsSystem: true},
 		{ConfigKey: model.ConfigRenewDays, ConfigValue: "15", Description: "每次续借延长天数", ConfigType: "int", IsSystem: true},
 		{ConfigKey: model.ConfigMaxReservations, ConfigValue: "3", Description: "每个用户最多预约数量", ConfigType: "int", IsSystem: true},
 		{ConfigKey: model.ConfigReservationPickupDays, ConfigValue: "3", Description: "预约取书有效期（天）", ConfigType: "int", IsSystem: true},
 		{ConfigKey: model.ConfigOverdueFinePerDay, ConfigValue: "0.5", Description: "逾期罚款（元/天）", ConfigType: "float", IsSystem: true},
 		{ConfigKey: model.ConfigMaxFineRate, ConfigValue: "0.5", Description: "罚款上限比例（图书价格的百分比）", ConfigType: "float", IsSystem: true},
-		{ConfigKey: model.ConfigOverdueReminderDays, ConfigValue: "3", Description: "到期前提前提醒天数", ConfigType: "int", IsSystem: true},
+		{ConfigKey: model.ConfigOverdueReminderDays, ConfigValue: "0", Description: "到期前提前提醒天数（0表示测试模式30秒）", ConfigType: "int", IsSystem: true},
 		{ConfigKey: model.ConfigOverdueBlockDays, ConfigValue: "7", Description: "逾期多久后禁止借书（天）", ConfigType: "int", IsSystem: true},
 		{ConfigKey: model.ConfigOverdueBlacklistDays, ConfigValue: "30", Description: "逾期多久后自动拉黑（天）", ConfigType: "int", IsSystem: true},
 	}

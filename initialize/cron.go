@@ -17,8 +17,10 @@ func InitCronJobs() {
 	reservationService := &service.ReservationService{}
 	blacklistService := &service.BlacklistService{}
 
-	// 每小时检查逾期记录
-	_, err := cronScheduler.AddFunc("0 0 * * * *", func() {
+	// 检查逾期记录（测试模式：每10秒检查一次，生产环境可改为每小时）
+	// 测试模式：*/10 * * * * * (每10秒)
+	// 生产环境：0 0 * * * * (每小时)
+	_, err := cronScheduler.AddFunc("*/10 * * * * *", func() {
 		zap.L().Info("开始检查逾期记录...")
 		if err := borrowService.CheckOverdueRecords(); err != nil {
 			zap.L().Error("检查逾期记录失败", zap.Error(err))

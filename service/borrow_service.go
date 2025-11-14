@@ -191,7 +191,15 @@ func (s *BorrowService) BorrowBook(userID, bookID uint, operatorID uint, reserva
 	borrowDays := GlobalConfigService.GetIntConfig(model.ConfigBorrowDays, reader.BorrowDays)
 	maxRenewCount := GlobalConfigService.GetIntConfig(model.ConfigMaxRenewTimes, reader.MaxRenew)
 
-	dueDate := now.AddDate(0, 0, borrowDays)
+	// 测试模式：借阅期限改为1分钟
+	// 生产环境：使用天数
+	var dueDate time.Time
+	if borrowDays == 0 || borrowDays > 365 {
+		// 如果配置为0或异常大值，使用1分钟（测试模式）
+		dueDate = now.Add(1 * time.Minute)
+	} else {
+		dueDate = now.AddDate(0, 0, borrowDays)
+	}
 
 	// 判断是否为普通用户借书（userID == operatorID）还是管理员为读者借书
 	var borrowStatus model.BorrowStatus
@@ -541,7 +549,56 @@ func (s *BorrowService) CheckOverdueRecords() error {
 
 	global.GVA_LOG.Info("更新逾期记录", zap.Int("count", len(overdueRecords)))
 
-	// TODO: 发送逾期提醒通知
+	// 发送逾期提醒通知
+	messageService := &MessageService{}
+	for _, record := range overdueRecords {
+		// 预加载读者和图书信息
+		if err := global.GVA_DB.Preload("Reader").Preload("Book").First(&record, record.ID).Error; err != nil {
+			global.GVA_LOG.Error("预加载借阅记录失败", zap.Error(err))
+			continue
+		}
+
+		// 计算逾期时间
+		overdueDuration := time.Since(record.DueDate)
+		overdueDays := int(overdueDuration.Hours() / 24)
+		overdueMinutes := int(overdueDuration.Minutes())
+
+		// 如果逾期时间小于1天，显示分钟数（测试模式）
+		var content string
+		if overdueDays < 1 {
+			if overdueMinutes < 1 {
+				overdueSeconds := int(overdueDuration.Seconds())
+				content = fmt.Sprintf("您借阅的《%s》已逾期 %d 秒，请尽快归还。逾期将产生罚款。",
+					record.Book.Title, overdueSeconds)
+			} else {
+				content = fmt.Sprintf("您借阅的《%s》已逾期 %d 分钟，请尽快归还。逾期将产生罚款。",
+					record.Book.Title, overdueMinutes)
+			}
+		} else {
+			content = fmt.Sprintf("您借阅的《%s》已逾期 %d 天，请尽快归还。逾期将产生罚款。",
+				record.Book.Title, overdueDays)
+		}
+
+		// 发送站内消息
+		title := "⚠️ 图书已逾期"
+
+		relatedID := record.ID
+		if err := messageService.CreateMessage(
+			record.Reader.UserID,
+			model.MessageTypeOverdue,
+			title,
+			content,
+			&relatedID,
+			"borrow",
+		); err != nil {
+			global.GVA_LOG.Error("发送逾期提醒消息失败", zap.Error(err))
+		} else {
+			global.GVA_LOG.Info("发送逾期提醒消息成功",
+				zap.Uint("reader_id", record.ReaderID),
+				zap.Uint("book_id", record.BookID),
+				zap.Int("overdue_days", overdueDays))
+		}
+	}
 
 	return nil
 }
@@ -553,8 +610,18 @@ func (s *BorrowService) SendDueReminders() error {
 	reminderDays := GlobalConfigService.GetIntConfig(model.ConfigOverdueReminderDays, 3)
 
 	// 查找即将到期的借阅记录
-	startDate := time.Now().AddDate(0, 0, reminderDays)
-	endDate := startDate.AddDate(0, 0, 1)
+	// 测试模式：提前30秒提醒
+	// 生产环境：使用天数
+	var startDate, endDate time.Time
+	now := time.Now()
+	if reminderDays == 0 || reminderDays > 365 {
+		// 如果配置为0或异常大值，使用30秒（测试模式）
+		startDate = now.Add(30 * time.Second)
+		endDate = startDate.Add(1 * time.Minute)
+	} else {
+		startDate = now.AddDate(0, 0, reminderDays)
+		endDate = startDate.AddDate(0, 0, 1)
+	}
 
 	var dueRecords []model.BorrowRecord
 	if err := global.GVA_DB.Where("status = ? AND due_date >= ? AND due_date < ?",
