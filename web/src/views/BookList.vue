@@ -328,8 +328,21 @@
                       <div class="book-cover-circle"></div>
                     </div>
                   </div>
-                  <!-- 借阅/点赞/收藏操作栏 (仅在图书管理模式下显示) -->
-                  <div v-if="book && book.id && viewMode !== 'borrow'" class="book-action-bar" @click.stop>
+                  <!-- 归还按钮 (仅在借阅视图的已逾期图书中显示，合并模式) -->
+                  <div v-if="viewMode === 'borrow' && book.borrowRecordId && borrowStatus[book.id]?.status === 'overdue'" 
+                       class="return-button-overlay" 
+                       @click.stop>
+                    <el-button 
+                      type="primary" 
+                      size="small"
+                      @click="handleReturnOverdueBook(book)"
+                      :loading="actionLoading[book.id]?.return"
+                    >
+                      归还
+                    </el-button>
+                  </div>
+                  <!-- 借阅/点赞/收藏操作栏 (在图书管理模式下显示，或在借阅视图的已借阅/待审批图书中显示) -->
+                  <div v-if="book && book.id && (viewMode !== 'borrow' || (viewMode === 'borrow' && (borrowStatus[book.id]?.status === 'borrowed' || borrowStatus[book.id]?.status === 'pending')))" class="book-action-bar" @click.stop>
                     <el-tooltip
                       :content="getBorrowButtonTitle(book.id)"
                       placement="top"
@@ -456,8 +469,21 @@
                       <div class="book-cover-circle"></div>
                     </div>
                   </div>
-                  <!-- 借阅/点赞/收藏操作栏 (仅在图书管理模式下显示) -->
-                  <div v-if="book && book.id && viewMode !== 'borrow'" class="book-action-bar" @click.stop>
+                  <!-- 归还按钮 (仅在借阅视图的已逾期分类中显示) -->
+                  <div v-if="viewMode === 'borrow' && category.name === '已逾期' && book.borrowRecordId" 
+                       class="return-button-overlay" 
+                       @click.stop>
+                    <el-button 
+                      type="primary" 
+                      size="small"
+                      @click="handleReturnOverdueBook(book)"
+                      :loading="actionLoading[book.id]?.return"
+                    >
+                      归还
+                    </el-button>
+                  </div>
+                  <!-- 借阅/点赞/收藏操作栏 (在图书管理模式下显示，或在借阅视图的已借阅/待审批分类中显示) -->
+                  <div v-if="book && book.id && (viewMode !== 'borrow' || (viewMode === 'borrow' && (category.name === '已借阅' || category.name === '待审批')))" class="book-action-bar" @click.stop>
                     <el-tooltip
                       :content="getBorrowButtonTitle(book.id)"
                       placement="top"
@@ -701,6 +727,35 @@
         </span>
       </template>
     </el-dialog>
+    
+    <!-- 支付罚款对话框 -->
+    <el-dialog
+      v-model="showPayFineDialog"
+      title="支付逾期罚款"
+      width="500px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="currentFineRecord" class="pay-fine-content">
+        <div class="fine-info">
+          <p><strong>图书：</strong>{{ currentFineRecord.bookTitle }}</p>
+          <p><strong>逾期天数：</strong>{{ currentFineRecord.overdueDays }} 天</p>
+          <p><strong>罚款金额：</strong><span class="fine-amount">¥{{ currentFineRecord.fineAmount.toFixed(2) }}</span></p>
+          <p v-if="currentFineRecord.paidAmount > 0"><strong>已支付：</strong>¥{{ currentFineRecord.paidAmount.toFixed(2) }}</p>
+          <p><strong>待支付：</strong><span class="unpaid-amount">¥{{ currentFineRecord.unpaidAmount.toFixed(2) }}</span></p>
+        </div>
+        <div class="pay-note">
+          <p>支付完成后，请联系管理员完成还书操作。</p>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showPayFineDialog = false">取消</el-button>
+          <el-button type="primary" @click="handlePayFine" :loading="fineLoading">
+            确认支付
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -768,7 +823,12 @@ export default {
     const favoriteStatus = ref({}) // { bookId: { isFavorited: boolean, favoriteCount: number } }
     const borrowStatus = ref({}) // { bookId: { isBorrowed: boolean, borrowRecordId: number, status: 'pending'|'borrowed' } }
     const reservationStatus = ref({}) // { bookId: { isReserved: boolean, reservationId: number, status: 'pending'|'available' } }
-    const actionLoading = ref({}) // { bookId: { like: boolean, favorite: boolean, borrow: boolean } }
+    const actionLoading = ref({}) // { bookId: { like: boolean, favorite: boolean, borrow: boolean, return: boolean } }
+    
+    // 支付罚款相关状态
+    const showPayFineDialog = ref(false)
+    const currentFineRecord = ref(null)
+    const fineLoading = ref(false)
     const searchInputRef = ref(null)
     const bookDetailVisible = ref(false)
     const selectedBook = ref(null)
@@ -1114,15 +1174,37 @@ export default {
     // 分类模式的滚动函数
     const scrollLeftByCategory = (categoryIndex) => {
       const category = categorizedBooks.value[categoryIndex]
-      if (category && category.centerIndex > 0) {
-        categoryCenterIndices.value[category.name] = category.centerIndex - 1
+      if (!category) return
+      
+      if (viewMode.value === 'borrow' && borrowCategorizedBooks.value.length > 0) {
+        // 借阅视图模式：直接更新 borrowCategorizedBooks 中的 centerIndex
+        const borrowCategory = borrowCategorizedBooks.value[categoryIndex]
+        if (borrowCategory && borrowCategory.centerIndex > 0) {
+          borrowCategory.centerIndex = borrowCategory.centerIndex - 1
+        }
+      } else {
+        // 普通视图模式：使用 categoryCenterIndices
+        if (category.centerIndex > 0) {
+          categoryCenterIndices.value[category.name] = category.centerIndex - 1
+        }
       }
     }
 
     const scrollRightByCategory = (categoryIndex) => {
       const category = categorizedBooks.value[categoryIndex]
-      if (category && category.centerIndex < category.books.length - 1) {
-        categoryCenterIndices.value[category.name] = category.centerIndex + 1
+      if (!category) return
+      
+      if (viewMode.value === 'borrow' && borrowCategorizedBooks.value.length > 0) {
+        // 借阅视图模式：直接更新 borrowCategorizedBooks 中的 centerIndex
+        const borrowCategory = borrowCategorizedBooks.value[categoryIndex]
+        if (borrowCategory && borrowCategory.centerIndex < borrowCategory.books.length - 1) {
+          borrowCategory.centerIndex = borrowCategory.centerIndex + 1
+        }
+      } else {
+        // 普通视图模式：使用 categoryCenterIndices
+        if (category.centerIndex < category.books.length - 1) {
+          categoryCenterIndices.value[category.name] = category.centerIndex + 1
+        }
       }
     }
     
@@ -1327,7 +1409,16 @@ export default {
           bookDetailVisible.value = true
         } else {
           // 如果点击的不是中心图书，滑动到该图书
-          categoryCenterIndices.value[category.name] = index
+          if (viewMode.value === 'borrow' && borrowCategorizedBooks.value.length > 0) {
+            // 借阅视图模式：直接更新 borrowCategorizedBooks 中的 centerIndex
+            const borrowCategory = borrowCategorizedBooks.value[categoryIndex]
+            if (borrowCategory) {
+              borrowCategory.centerIndex = index
+            }
+          } else {
+            // 普通视图模式：使用 categoryCenterIndices
+            categoryCenterIndices.value[category.name] = index
+          }
         }
       }
     }
@@ -2199,6 +2290,82 @@ export default {
       }
     }
     
+    // 处理逾期图书归还
+    const handleReturnOverdueBook = async (book) => {
+      if (!book.borrowRecordId) {
+        ElMessage.error('借阅记录ID不存在')
+        return
+      }
+      
+      if (!actionLoading.value[book.id]) {
+        actionLoading.value[book.id] = {}
+      }
+      if (actionLoading.value[book.id].return) return
+      
+      actionLoading.value[book.id].return = true
+      
+      try {
+        // 获取罚款信息
+        const fineResponse = await axios.get('/borrow/getFineByRecord', {
+          params: { record_id: book.borrowRecordId }
+        })
+        
+        if (fineResponse.code === 200 && fineResponse.data) {
+          const fineInfo = fineResponse.data
+          
+          if (fineInfo.need_pay && fineInfo.fine_amount > 0) {
+            // 需要支付罚款，显示支付对话框
+            currentFineRecord.value = {
+              recordId: book.borrowRecordId,
+              bookTitle: book.title,
+              fineAmount: fineInfo.fine_amount,
+              paidAmount: fineInfo.paid_amount || 0,
+              overdueDays: fineInfo.overdue_days || 0,
+              unpaidAmount: fineInfo.fine_amount - (fineInfo.paid_amount || 0)
+            }
+            showPayFineDialog.value = true
+          } else {
+            // 无需支付或已支付，直接提示可以归还
+            ElMessage.info('罚款已支付，请联系管理员完成还书')
+          }
+        } else {
+          ElMessage.error('获取罚款信息失败')
+        }
+      } catch (error) {
+        console.error('获取罚款信息失败:', error)
+        ElMessage.error('获取罚款信息失败')
+      } finally {
+        actionLoading.value[book.id].return = false
+      }
+    }
+    
+    // 支付罚款
+    const handlePayFine = async () => {
+      if (!currentFineRecord.value) return
+      
+      fineLoading.value = true
+      try {
+        const response = await axios.post('/borrow/payFine', {
+          record_id: currentFineRecord.value.recordId
+        })
+        
+        if (response.code === 200) {
+          ElMessage.success(`支付成功！已支付 ${response.data.fine_amount} 元`)
+          showPayFineDialog.value = false
+          currentFineRecord.value = null
+          // 刷新借阅列表
+          await fetchMyBorrowBooks()
+        } else {
+          ElMessage.error(response.msg || '支付失败')
+        }
+      } catch (error) {
+        console.error('支付失败:', error)
+        ElMessage.error(error.response?.data?.msg || '支付失败')
+      } finally {
+        fineLoading.value = false
+      }
+    }
+    
     // 获取借阅按钮的详细状态提示
     const getBorrowButtonTitle = (bookId) => {
       const borrowInfo = borrowStatus.value[bookId]
@@ -2358,15 +2525,22 @@ export default {
           const pendingBooks = []
           const reservedBooks = []
           
-          // 处理借阅记录
+          // 处理借阅记录（保存完整的借阅记录信息，包括record_id）
           borrowRecords.forEach(record => {
             if (record.book) {
+              // 将借阅记录ID附加到图书对象上
+              const bookWithRecord = {
+                ...record.book,
+                borrowRecordId: record.id || record.ID,
+                borrowRecord: record // 保存完整的借阅记录
+              }
+              
               if (record.status === 'borrowed') {
-                borrowedBooks.push(record.book)
+                borrowedBooks.push(bookWithRecord)
               } else if (record.status === 'overdue') {
-                overdueBooks.push(record.book)
+                overdueBooks.push(bookWithRecord)
               } else if (record.status === 'pending') {
-                pendingBooks.push(record.book)
+                pendingBooks.push(bookWithRecord)
               }
             }
           })
@@ -2893,6 +3067,11 @@ export default {
       handleLoadMoreMessages,
       formatMessageTime,
       getBorrowButtonTitle,
+      handleReturnOverdueBook,
+      handlePayFine,
+      showPayFineDialog,
+      currentFineRecord,
+      fineLoading,
       bookDetailVisible,
       selectedBook,
       dialogVisible,
@@ -3432,6 +3611,7 @@ h2.category-title[data-status="reserved"] {
   justify-content: center;
   overflow: hidden;
   background: transparent;
+  position: relative; /* 为归还按钮定位 */
 }
 
 /* 渐变背景颜色 */
@@ -4107,5 +4287,57 @@ h2.category-title[data-status="reserved"] {
     box-shadow: 0 0 30px rgba(64, 158, 255, 0.8);
     transform: scale(1.02);
   }
+}
+
+/* 归还按钮样式 */
+.return-button-overlay {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 20;
+}
+
+/* 支付罚款对话框样式 */
+.pay-fine-content {
+  padding: 20px 0;
+}
+
+.fine-info {
+  background: #f5f7fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.fine-info p {
+  margin: 10px 0;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.fine-amount {
+  color: #f56c6c;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.unpaid-amount {
+  color: #e6a23c;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.pay-note {
+  padding: 15px;
+  background: #ecf5ff;
+  border-left: 4px solid #409eff;
+  border-radius: 4px;
+  margin-top: 15px;
+}
+
+.pay-note p {
+  margin: 0;
+  color: #606266;
+  font-size: 13px;
 }
 </style>

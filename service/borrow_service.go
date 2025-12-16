@@ -398,6 +398,24 @@ func (s *BorrowService) ReturnBook(recordID uint, operatorID uint) (*model.Borro
 		return nil, 0, err
 	}
 
+	// 2.5. 如果有罚款，检查是否已支付
+	if fineAmount > 0 {
+		var fineRecord model.FineRecord
+		if err := tx.Where("borrow_record_id = ?", recordID).First(&fineRecord).Error; err == nil {
+			// 罚款记录存在，检查是否已支付
+			if fineRecord.Status != model.FineStatusPaid {
+				unpaidAmount := fineRecord.Amount - fineRecord.PaidAmount
+				if unpaidAmount > 0 {
+					tx.Rollback()
+					return nil, 0, fmt.Errorf("该图书有未支付的罚款 %.2f 元，请先支付后再还书", unpaidAmount)
+				}
+			}
+		} else {
+			// 罚款记录不存在，但计算有罚款
+			// 这种情况允许还书，会在还书时创建罚款记录
+		}
+	}
+
 	// 3. 更新借阅记录
 	now := time.Now()
 	record.ReturnDate = &now
@@ -416,11 +434,23 @@ func (s *BorrowService) ReturnBook(recordID uint, operatorID uint) (*model.Borro
 		return nil, 0, errors.New("还书失败")
 	}
 
-	// 4. 如果有罚款，创建罚款记录
+	// 4. 如果有罚款，检查是否已有罚款记录
 	if fineAmount > 0 {
-		if err := s.fineService.CreateFineRecord(record.ReaderID, record.ID, "overdue", fineAmount, overdueDays, operatorID); err != nil {
-			global.GVA_LOG.Error("创建罚款记录失败", zap.Error(err))
-			// 不回滚，允许还书成功但罚款记录创建失败
+		var existingFine model.FineRecord
+		if err := tx.Where("borrow_record_id = ?", recordID).First(&existingFine).Error; err != nil {
+			// 罚款记录不存在，创建新的罚款记录
+			if err := s.fineService.CreateFineRecord(record.ReaderID, record.ID, "overdue", fineAmount, overdueDays, operatorID); err != nil {
+				global.GVA_LOG.Error("创建罚款记录失败", zap.Error(err))
+				// 不回滚，允许还书成功但罚款记录创建失败
+			}
+		} else {
+			// 罚款记录已存在（可能是用户提前支付的），更新状态确保一致性
+			// 如果已支付，不需要再次创建
+			if existingFine.Status == model.FineStatusUnpaid {
+				// 如果状态是未支付，但用户已经支付了，这里不需要处理
+				// 因为支付时已经更新了状态
+				global.GVA_LOG.Info("罚款记录已存在", zap.Uint("fine_id", existingFine.ID), zap.String("status", string(existingFine.Status)))
+			}
 		}
 	}
 

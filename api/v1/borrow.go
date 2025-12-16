@@ -7,9 +7,11 @@ import (
 	"bookadmin/model/common/response"
 	"bookadmin/service"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 type BorrowApi struct{}
@@ -415,5 +417,185 @@ func (b *BorrowApi) GetBorrowStatistics(c *gin.Context) {
 		"unpaid_fine":        reader.UnpaidFine,
 		"total_fine":         reader.TotalFine,
 		"is_blacklisted":     reader.IsBlacklisted,
+	}))
+}
+
+// PayFine 支付罚款（根据借阅记录ID）
+func (b *BorrowApi) PayFine(c *gin.Context) {
+	var req struct {
+		RecordID uint `json:"record_id" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(200, response.FailWithMessage("参数错误"))
+		return
+	}
+
+	// 获取当前用户ID
+	userIDInterface, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(200, response.FailWithMessage("未登录"))
+		return
+	}
+	userID := userIDInterface.(uint)
+
+	// 查找读者的ID
+	var reader model.Reader
+	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+		c.JSON(200, response.FailWithMessage("读者信息不存在"))
+		return
+	}
+
+	// 查找借阅记录
+	var borrowRecord model.BorrowRecord
+	if err := global.GVA_DB.Where("id = ? AND reader_id = ?", req.RecordID, reader.ID).First(&borrowRecord).Error; err != nil {
+		c.JSON(200, response.FailWithMessage("借阅记录不存在"))
+		return
+	}
+
+	// 查找该借阅记录的罚款记录
+	var fineRecord model.FineRecord
+	if err := global.GVA_DB.Where("borrow_record_id = ?", req.RecordID).First(&fineRecord).Error; err != nil {
+		// 如果没有罚款记录，先计算罚款金额
+		fineService := &service.FineService{}
+		fineAmount, overdueDays, err := fineService.CalculateOverdueFine(&borrowRecord)
+		if err != nil {
+			global.GVA_LOG.Error("计算罚款失败", zap.Error(err))
+			c.JSON(200, response.FailWithMessage("计算罚款失败"))
+			return
+		}
+
+		if fineAmount <= 0 {
+			c.JSON(200, response.FailWithMessage("无需支付罚款"))
+			return
+		}
+
+		// 创建罚款记录并直接标记为已支付（因为用户提前支付）
+		paidDate := time.Now()
+		fineRecord = model.FineRecord{
+			ReaderID:       reader.ID,
+			BorrowRecordID: req.RecordID,
+			FineType:       "overdue",
+			Amount:         fineAmount,
+			PaidAmount:     fineAmount,           // 已支付全部金额
+			Status:         model.FineStatusPaid, // 直接标记为已支付
+			OverdueDays:    overdueDays,
+			FineDate:       time.Now(),
+			PaidDate:       &paidDate,
+			OperatorID:     userID,
+			Remark:         "用户提前支付",
+		}
+
+		if err := global.GVA_DB.Create(&fineRecord).Error; err != nil {
+			global.GVA_LOG.Error("创建罚款记录失败", zap.Error(err))
+			c.JSON(200, response.FailWithMessage("创建罚款记录失败"))
+			return
+		}
+
+		// 更新读者的罚款金额（已支付，所以只更新总罚款，不更新未支付罚款）
+		if err := global.GVA_DB.Model(&model.Reader{}).Where("id = ?", reader.ID).
+			UpdateColumn("total_fine", gorm.Expr("total_fine + ?", fineAmount)).
+			Error; err != nil {
+			global.GVA_LOG.Error("更新读者罚款金额失败", zap.Error(err))
+		}
+
+		c.JSON(200, response.OkWithData(gin.H{
+			"message":     "支付成功",
+			"fine_amount": fineAmount,
+		}))
+		return
+	}
+
+	// 如果罚款记录已存在，检查状态
+	if fineRecord.Status == model.FineStatusPaid {
+		c.JSON(200, response.FailWithMessage("罚款已支付"))
+		return
+	}
+
+	if fineRecord.Status == model.FineStatusWaived {
+		c.JSON(200, response.FailWithMessage("罚款已豁免"))
+		return
+	}
+
+	// 支付未支付的罚款
+	fineService := &service.FineService{}
+	unpaidAmount := fineRecord.Amount - fineRecord.PaidAmount
+	if err := fineService.PayFine(fineRecord.ID, unpaidAmount, userID); err != nil {
+		global.GVA_LOG.Error("支付罚款失败", zap.Error(err))
+		c.JSON(200, response.FailWithMessage(err.Error()))
+		return
+	}
+
+	c.JSON(200, response.OkWithData(gin.H{
+		"message":     "支付成功",
+		"fine_amount": unpaidAmount,
+	}))
+}
+
+// GetFineByRecord 根据借阅记录ID获取罚款信息
+func (b *BorrowApi) GetFineByRecord(c *gin.Context) {
+	recordIDStr := c.Query("record_id")
+	if recordIDStr == "" {
+		c.JSON(200, response.FailWithMessage("参数错误"))
+		return
+	}
+
+	var recordID uint
+	if _, err := fmt.Sscanf(recordIDStr, "%d", &recordID); err != nil {
+		c.JSON(200, response.FailWithMessage("参数错误"))
+		return
+	}
+
+	// 获取当前用户ID
+	userIDInterface, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(200, response.FailWithMessage("未登录"))
+		return
+	}
+	userID := userIDInterface.(uint)
+
+	// 查找读者的ID
+	var reader model.Reader
+	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+		c.JSON(200, response.FailWithMessage("读者信息不存在"))
+		return
+	}
+
+	// 查找借阅记录
+	var borrowRecord model.BorrowRecord
+	if err := global.GVA_DB.Where("id = ? AND reader_id = ?", recordID, reader.ID).First(&borrowRecord).Error; err != nil {
+		c.JSON(200, response.FailWithMessage("借阅记录不存在"))
+		return
+	}
+
+	// 查找罚款记录
+	var fineRecord model.FineRecord
+	if err := global.GVA_DB.Where("borrow_record_id = ?", recordID).First(&fineRecord).Error; err != nil {
+		// 如果没有罚款记录，计算罚款金额
+		fineService := &service.FineService{}
+		fineAmount, overdueDays, err := fineService.CalculateOverdueFine(&borrowRecord)
+		if err != nil {
+			global.GVA_LOG.Error("计算罚款失败", zap.Error(err))
+			c.JSON(200, response.FailWithMessage("计算罚款失败"))
+			return
+		}
+
+		c.JSON(200, response.OkWithData(gin.H{
+			"fine_amount":  fineAmount,
+			"overdue_days": overdueDays,
+			"paid_amount":  0,
+			"status":       "unpaid",
+			"need_pay":     fineAmount > 0,
+		}))
+		return
+	}
+
+	c.JSON(200, response.OkWithData(gin.H{
+		"fine_id":      fineRecord.ID,
+		"fine_amount":  fineRecord.Amount,
+		"paid_amount":  fineRecord.PaidAmount,
+		"status":       fineRecord.Status,
+		"overdue_days": fineRecord.OverdueDays,
+		"need_pay":     fineRecord.Status == model.FineStatusUnpaid && (fineRecord.Amount-fineRecord.PaidAmount) > 0,
 	}))
 }
