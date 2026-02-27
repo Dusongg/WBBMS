@@ -341,8 +341,8 @@
                       归还
                     </el-button>
                   </div>
-                  <!-- 借阅/点赞/收藏操作栏 (在图书管理模式下显示，或在借阅视图的已借阅/待审批图书中显示) -->
-                  <div v-if="book && book.id && (viewMode !== 'borrow' || (viewMode === 'borrow' && (borrowStatus[book.id]?.status === 'borrowed' || borrowStatus[book.id]?.status === 'pending')))" class="book-action-bar" @click.stop>
+                  <!-- 借阅/点赞/收藏操作栏 (仅在图书管理模式下显示) -->
+                  <div v-if="book && book.id && viewMode !== 'borrow'" class="book-action-bar" @click.stop>
                     <el-tooltip
                       :content="getBorrowButtonTitle(book.id)"
                       placement="top"
@@ -482,8 +482,8 @@
                       归还
                     </el-button>
                   </div>
-                  <!-- 借阅/点赞/收藏操作栏 (在图书管理模式下显示，或在借阅视图的已借阅/待审批分类中显示) -->
-                  <div v-if="book && book.id && (viewMode !== 'borrow' || (viewMode === 'borrow' && (category.name === '已借阅' || category.name === '待审批')))" class="book-action-bar" @click.stop>
+                  <!-- 借阅/点赞/收藏操作栏 (仅在图书管理模式下显示) -->
+                  <div v-if="book && book.id && viewMode !== 'borrow'" class="book-action-bar" @click.stop>
                     <el-tooltip
                       :content="getBorrowButtonTitle(book.id)"
                       placement="top"
