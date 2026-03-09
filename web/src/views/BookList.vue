@@ -808,7 +808,7 @@ export default {
     const searchKeyword = ref('')
     const showListView = ref(false)
     const showSearchInput = ref(false)
-    const viewMode = ref('all') // 'all' 或 'borrow'
+    const viewMode = ref('all') // 'all' | 'borrow' | 'like' | 'favorite'
     
     // 消息相关状态
     const showMessagePopover = ref(false)
@@ -954,6 +954,17 @@ export default {
       return [...new Set(categories)]
     })
 
+    const isBookInCurrentView = (book) => {
+      if (!book || !book.id) return false
+      if (viewMode.value === 'like') {
+        return !!likeStatus.value[book.id]?.isLiked
+      }
+      if (viewMode.value === 'favorite') {
+        return !!favoriteStatus.value[book.id]?.isFavorited
+      }
+      return true
+    }
+
     // 获取当前选中分类的图书（支持多个分类，合并模式）
     const currentCategoryBooks = computed(() => {
       if (!selectedCategories.value || selectedCategories.value.length === 0) {
@@ -962,6 +973,7 @@ export default {
       
       // 合并多个分类的图书
       const books = (bookList.value || []).filter(book => {
+        if (!isBookInCurrentView(book)) return false
         // 优先使用新的分类系统（categories）
         if (book && book.categories && book.categories.length > 0) {
           return book.categories.some(cat => {
@@ -1027,6 +1039,7 @@ export default {
       
       const result = categoriesToShow.map(cat => {
         const books = (bookList.value || []).filter(book => {
+          if (!isBookInCurrentView(book)) return false
           // 优先使用新的分类系统（categories）
           if (book && book.categories && book.categories.length > 0) {
             return book.categories.some(c => c.name === cat)
@@ -2976,6 +2989,10 @@ export default {
     watch(() => route.query.view, (newView) => {
       if (newView === 'borrow') {
         viewMode.value = 'borrow'
+      } else if (newView === 'like') {
+        viewMode.value = 'like'
+      } else if (newView === 'favorite') {
+        viewMode.value = 'favorite'
       } else {
         viewMode.value = 'all'
       }

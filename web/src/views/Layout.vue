@@ -91,6 +91,24 @@
             </template>
           </el-dropdown>
         </el-tooltip>
+        <el-tooltip content="我喜欢的" placement="top" :show-after="100" :hide-after="0">
+          <button
+            class="bottom-btn"
+            :class="{ active: $route.path === '/books' && $route.query.view === 'like' }"
+            @click="$router.push({ path: '/books', query: { view: 'like' } })"
+          >
+            <el-icon><Star /></el-icon>
+          </button>
+        </el-tooltip>
+        <el-tooltip content="我收藏的" placement="top" :show-after="100" :hide-after="0">
+          <button
+            class="bottom-btn"
+            :class="{ active: $route.path === '/books' && $route.query.view === 'favorite' }"
+            @click="$router.push({ path: '/books', query: { view: 'favorite' } })"
+          >
+            <el-icon><CollectionTag /></el-icon>
+          </button>
+        </el-tooltip>
       </div>
     </div>
   </el-container>
@@ -108,7 +126,9 @@ import {
   DataAnalysis,
   Setting,
   UserFilled,
-  TrendCharts
+  TrendCharts,
+  Star,
+  CollectionTag
 } from '@element-plus/icons-vue'
 import { hasAdminOrLibrarianRole, isAdmin, getUserInfo, removeToken } from '../utils/auth'
 
@@ -122,7 +142,9 @@ export default {
     DataAnalysis,
     Setting,
     UserFilled,
-    TrendCharts
+    TrendCharts,
+    Star,
+    CollectionTag
   },
   setup() {
     const router = useRouter()

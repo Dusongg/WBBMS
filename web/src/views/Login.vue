@@ -1,7 +1,39 @@
 <template>
-  <div class="animated-login-root" ref="rightColumnRef">
+  <div class="animated-login-root" :class="`theme-${themeMode}`" ref="rightColumnRef">
     <!-- 全屏 3D 书本背景 -->
     <div ref="canvasContainer" class="login-three-container"></div>
+
+    <div class="theme-switch" role="group" aria-label="Theme mode">
+      <button
+        class="theme-switch-btn"
+        :class="{ active: themeMode === 'dark' }"
+        aria-label="切换暗色模式"
+        title="暗色模式"
+        @click="setTheme('dark')"
+      >
+        <svg class="theme-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M20 14.5a8 8 0 1 1-10.5-10 7 7 0 1 0 10.5 10z"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+      <button
+        class="theme-switch-btn"
+        :class="{ active: themeMode === 'light' }"
+        aria-label="切换亮色模式"
+        title="亮色模式"
+        @click="setTheme('light')"
+      >
+        <svg class="theme-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.8" />
+          <path d="M12 2.5v2.2M12 19.3v2.2M4.7 4.7l1.6 1.6M17.7 17.7l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.7 19.3l1.6-1.6M17.7 6.3l1.6-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
 
     <!-- 居中内容：角色区在上 + 登录框在下 -->
     <div class="animated-login-center">
@@ -167,12 +199,12 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
-import * as THREE from 'three'
 import { setToken, setUserInfo } from '../utils/auth'
+import { useThemedBookScene } from '../composables/useThemedBookScene'
 
 export default {
   name: 'Login',
@@ -180,11 +212,13 @@ export default {
     const router = useRouter()
 
     const loginFormRef = ref(null)
-    const canvasContainer = ref(null)
-    const rightColumnRef = ref(null)
     const loading = ref(false)
     const rememberMe = ref(false)
     const showPassword = ref(false)
+    const { themeMode, setTheme, canvasContainer, rightColumnRef, updateSceneCursor } = useThemedBookScene({
+      isBusyRef: loading,
+      trackPointer: false
+    })
 
     const loginForm = reactive({
       username: '',
@@ -211,124 +245,10 @@ export default {
     const yellowRef = ref(null)
     const orangeRef = ref(null)
 
-    // --- Three.js 右侧 3D 书本背景 ---
-    let scene, camera, renderer, booksGroup, animationId
-    let books = []
-    const cursor3d = { x: 0, y: 0 }
-
-    const initThreeJS = () => {
-      if (!canvasContainer.value) return
-
-      const width = window.innerWidth
-      const height = window.innerHeight
-      if (width === 0 || height === 0) return
-
-      scene = new THREE.Scene()
-      const bgColor = 0x020617
-      scene.background = new THREE.Color(bgColor)
-      scene.fog = new THREE.Fog(bgColor, 10, 60)
-
-      camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000)
-      camera.position.set(0, 0, 14)
-
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-      renderer.setSize(width, height)
-      renderer.shadowMap.enabled = true
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap
-      renderer.toneMapping = THREE.ACESFilmicToneMapping
-      renderer.toneMappingExposure = 1.0
-      canvasContainer.value.appendChild(renderer.domElement)
-
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.8)
-      scene.add(ambientLight)
-
-      const dirLight = new THREE.DirectionalLight(0xffffff, 1.2)
-      dirLight.position.set(15, 30, 10)
-      dirLight.castShadow = true
-      dirLight.shadow.mapSize.width = 2048
-      dirLight.shadow.mapSize.height = 2048
-      scene.add(dirLight)
-
-      const fillLight = new THREE.DirectionalLight(0xe0f7fa, 0.5)
-      fillLight.position.set(-15, 10, -10)
-      scene.add(fillLight)
-
-      booksGroup = new THREE.Group()
-      scene.add(booksGroup)
-
-      const palette = [
-        0x1a1a1a, 0x1a1a1a,
-        0xffffff,
-        0xdddddd,
-        0xf3c4c2, 0xf3c4c2
-      ]
-
-      const createBook = (color) => {
-        const group = new THREE.Group()
-        const coverMat = new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.1 })
-        const cover = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.5, 0.25), coverMat)
-        cover.castShadow = true
-        cover.receiveShadow = true
-        group.add(cover)
-        const pagesMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 })
-        const pages = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.45, 0.22), pagesMat)
-        pages.position.x = 0.05
-        group.add(pages)
-        return group
-      }
-
-      for (let i = 0; i < 90; i++) {
-        const book = createBook(palette[Math.floor(Math.random() * palette.length)])
-        book.position.set(
-          (Math.random() - 0.5) * 60,
-          (Math.random() - 0.5) * 40,
-          (Math.random() - 0.5) * 70 - 10
-        )
-        book.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0)
-        book.userData = {
-          rotSpeed: 0.001 + Math.random() * 0.002,
-          randomOffset: Math.random() * 100
-        }
-        booksGroup.add(book)
-        books.push(book)
-      }
-
-      animate()
-    }
-
-    const animate = () => {
-      animationId = requestAnimationFrame(animate)
-      if (!scene || !camera || !renderer) return
-
-      books.forEach((book) => {
-        book.position.y += Math.sin(Date.now() * 0.001 + book.userData.randomOffset) * 0.002
-        book.rotation.x += book.userData.rotSpeed
-        book.rotation.y += book.userData.rotSpeed
-      })
-
-      if (!loading.value) {
-        booksGroup.rotation.x += (cursor3d.y * 0.15 - booksGroup.rotation.x) * 0.05
-        booksGroup.rotation.y += (cursor3d.x * 0.15 - booksGroup.rotation.y) * 0.05
-      }
-
-      renderer.render(scene, camera)
-    }
-
-    const handleResize = () => {
-      if (!camera || !renderer) return
-      const width = window.innerWidth
-      const height = window.innerHeight
-      if (width === 0 || height === 0) return
-      camera.aspect = width / height
-      camera.updateProjectionMatrix()
-      renderer.setSize(width, height)
-    }
-
     const handleMouseMove = (e) => {
       mouseX.value = e.clientX
       mouseY.value = e.clientY
-      cursor3d.x = e.clientX / window.innerWidth - 0.5
-      cursor3d.y = e.clientY / window.innerHeight - 0.5
+      updateSceneCursor(e.clientX, e.clientY)
     }
 
     const setupBlink = (blinkRef) => {
@@ -595,33 +515,18 @@ export default {
       })
     }
 
-    let resizeObserver = null
-
     onMounted(() => {
       window.addEventListener('mousemove', handleMouseMove)
-      window.addEventListener('resize', handleResize)
+      purpleTimer = setupBlink(isPurpleBlinking)
+      blackTimer = setupBlink(isBlackBlinking)
+    })
 
-      nextTick(() => {
-        initThreeJS()
-        if (rightColumnRef.value && typeof ResizeObserver !== 'undefined') {
-          resizeObserver = new ResizeObserver(handleResize)
-          resizeObserver.observe(rightColumnRef.value)
-        }
-      })
-
-      const purpleTimer = setupBlink(isPurpleBlinking)
-      const blackTimer = setupBlink(isBlackBlinking)
-
-      onUnmounted(() => {
-        window.removeEventListener('mousemove', handleMouseMove)
-        window.removeEventListener('resize', handleResize)
-        if (resizeObserver && rightColumnRef.value) {
-          resizeObserver.disconnect()
-        }
-        if (animationId) cancelAnimationFrame(animationId)
-        clearTimeout(purpleTimer)
-        clearTimeout(blackTimer)
-      })
+    let purpleTimer = null
+    let blackTimer = null
+    onUnmounted(() => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      if (purpleTimer) clearTimeout(purpleTimer)
+      if (blackTimer) clearTimeout(blackTimer)
     })
 
     return {
@@ -633,6 +538,8 @@ export default {
       loading,
       rememberMe,
       showPassword,
+      themeMode,
+      setTheme,
       // 动画状态
       isPurpleBlinking,
       isBlackBlinking,
@@ -662,9 +569,44 @@ export default {
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
 
 .animated-login-root {
+  --page-bg: #020617;
+  --page-fg: #f9fafb;
+  --brand-fg: rgba(249, 250, 251, 0.92);
+  --footer-muted: rgba(249, 250, 251, 0.6);
+  --footer-hover: #f9fafb;
+  --login-fg: rgba(250, 250, 250, 0.98);
+  --login-muted: rgba(148, 163, 184, 0.85);
+  --login-border: rgba(255, 255, 255, 0.08);
+  --login-focus: rgba(255, 255, 255, 0.2);
+  --glass-bg: rgba(15, 23, 42, 0.25);
+  --input-bg: rgba(255, 255, 255, 0.06);
+  --input-bg-hover: rgba(255, 255, 255, 0.08);
+  --input-bg-focus: rgba(255, 255, 255, 0.08);
+  --button-bg: rgba(255, 255, 255, 0.1);
+  --button-bg-hover: rgba(255, 255, 255, 0.14);
+  --button-bg-active: rgba(255, 255, 255, 0.08);
   position: relative;
   min-height: 100vh;
-  background: #020617;
+  background: var(--page-bg);
+}
+
+.animated-login-root.theme-light {
+  --page-bg: #eef3fa;
+  --page-fg: #0f172a;
+  --brand-fg: rgba(15, 23, 42, 0.92);
+  --footer-muted: rgba(51, 65, 85, 0.74);
+  --footer-hover: #0f172a;
+  --login-fg: rgba(15, 23, 42, 0.96);
+  --login-muted: rgba(71, 85, 105, 0.88);
+  --login-border: rgba(15, 23, 42, 0.16);
+  --login-focus: rgba(37, 99, 235, 0.38);
+  --glass-bg: rgba(255, 255, 255, 0.64);
+  --input-bg: rgba(255, 255, 255, 0.74);
+  --input-bg-hover: rgba(255, 255, 255, 0.9);
+  --input-bg-focus: rgba(255, 255, 255, 0.98);
+  --button-bg: rgba(37, 99, 235, 0.14);
+  --button-bg-hover: rgba(37, 99, 235, 0.22);
+  --button-bg-active: rgba(37, 99, 235, 0.16);
 }
 
 /* 全屏 3D 书本背景 */
@@ -693,9 +635,55 @@ export default {
   justify-content: center;
   padding: 2rem 1.5rem 3rem;
   padding-top: 4vh;
-  color: #f9fafb;
+  color: var(--page-fg);
   transform: scale(1.12);
   transform-origin: center center;
+}
+
+.theme-switch {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.18);
+  border: 1px solid var(--login-border);
+  backdrop-filter: blur(12px);
+}
+
+.theme-switch-btn {
+  border: none;
+  background: transparent;
+  color: var(--login-muted);
+  font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.22s ease;
+}
+
+.theme-switch-btn:hover {
+  color: var(--login-fg);
+}
+
+.theme-switch-btn.active {
+  background: var(--button-bg-hover);
+  color: var(--login-fg);
+  box-shadow: inset 0 0 0 1px var(--login-border);
+}
+
+.theme-icon {
+  width: 17px;
+  height: 17px;
 }
 
 .brand-logo {
@@ -723,6 +711,7 @@ export default {
 
 .brand-text {
   font-size: 80px;
+  color: var(--brand-fg);
   opacity: 0.9;
 }
 
@@ -779,7 +768,7 @@ export default {
   display: flex;
   gap: 2rem;
   font-size: 0.78rem;
-  color: rgba(249, 250, 251, 0.6);
+  color: var(--footer-muted);
   margin-top: 2rem;
 }
 
@@ -790,15 +779,11 @@ export default {
 }
 
 .footer-links a:hover {
-  color: #f9fafb;
+  color: var(--footer-hover);
 }
 
 /* 登录框：简约设计 token + 仅保留透明高斯模糊 */
 .login-panel {
-  --login-fg: rgba(250, 250, 250, 0.98);
-  --login-muted: rgba(148, 163, 184, 0.85);
-  --login-border: rgba(255, 255, 255, 0.08);
-  --login-focus: rgba(255, 255, 255, 0.2);
   --login-radius: 12px;
   --login-space: 1.25rem;
   --login-font: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -809,7 +794,7 @@ export default {
 
 /* 仅保留透明 + 高斯模糊（毛玻璃），其余极简 */
 .glass-card {
-  background: rgba(15, 23, 42, 0.25) !important;
+  background: var(--glass-bg) !important;
   border-radius: var(--login-radius);
   border: 1px solid var(--login-border);
   box-shadow: none;
@@ -835,7 +820,7 @@ export default {
 }
 
 ::deep(.el-input__wrapper) {
-  background-color: rgba(255, 255, 255, 0.06) !important;
+  background-color: var(--input-bg) !important;
   border-radius: var(--login-radius) !important;
   box-shadow: inset 0 0 0 1px var(--login-border) !important;
   padding: 0.6rem 1rem !important;
@@ -843,11 +828,11 @@ export default {
 }
 
 ::deep(.el-input__wrapper:hover) {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+  background-color: var(--input-bg-hover) !important;
 }
 
 ::deep(.el-input__wrapper.is-focus) {
-  background-color: rgba(255, 255, 255, 0.08) !important;
+  background-color: var(--input-bg-focus) !important;
   box-shadow: inset 0 0 0 1px var(--login-focus) !important;
 }
 
@@ -915,7 +900,7 @@ export default {
   height: 44px;
   border-radius: var(--login-radius) !important;
   border: 1px solid var(--login-border) !important;
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: var(--button-bg) !important;
   font-family: var(--login-font);
   font-size: 0.8125rem;
   font-weight: 500;
@@ -926,12 +911,12 @@ export default {
 }
 
 .login-btn-design:hover {
-  background: rgba(255, 255, 255, 0.14) !important;
+  background: var(--button-bg-hover) !important;
   border-color: var(--login-focus) !important;
 }
 
 .login-btn-design:active {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: var(--button-bg-active) !important;
 }
 
 .signup-row {
