@@ -26,19 +26,15 @@ func GetWeekStartEnd(period string) (time.Time, time.Time, error) {
 		return time.Time{}, time.Time{}, err
 	}
 
-	// 计算该周的第一天（周一）
-	jan1 := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
-	weekday := int(jan1.Weekday())
+	// ISO 周计算：以 1 月 4 日所在周作为第 1 周，周一为起始
+	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.Local)
+	weekday := int(jan4.Weekday())
 	if weekday == 0 {
-		weekday = 7
+		weekday = 7 // Sunday -> 7
 	}
-	
-	// ISO周从周一开始
-	daysToMonday := (8 - weekday) % 7
-	firstMonday := jan1.AddDate(0, 0, daysToMonday)
-	
-	// 加上周数
-	weekStart := firstMonday.AddDate(0, 0, (week-1)*7)
+	week1Monday := jan4.AddDate(0, 0, -(weekday - 1))
+
+	weekStart := week1Monday.AddDate(0, 0, (week-1)*7)
 	weekEnd := weekStart.AddDate(0, 0, 7).Add(-time.Second)
 
 	return weekStart, weekEnd, nil

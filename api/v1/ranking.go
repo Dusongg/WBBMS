@@ -146,7 +146,19 @@ func (api *RankingAPI) GetFavoriteMonthRanking(c *gin.Context) {
 func (api *RankingAPI) RebuildRankings(c *gin.Context) {
 	// 检查管理员权限
 	role, exists := c.Get("role")
-	if !exists || (role != "admin" && role != "系统管理员") {
+	if !exists {
+		c.JSON(http.StatusForbidden, gin.H{"code": 403, "msg": "权限不足"})
+		return
+	}
+
+	isAdmin := false
+	switch r := role.(type) {
+	case model.UserRole:
+		isAdmin = r == model.RoleAdmin
+	case string:
+		isAdmin = r == string(model.RoleAdmin) || r == "系统管理员"
+	}
+	if !isAdmin {
 		c.JSON(http.StatusForbidden, gin.H{"code": 403, "msg": "权限不足"})
 		return
 	}

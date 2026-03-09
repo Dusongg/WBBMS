@@ -2,6 +2,7 @@ package router
 
 import (
 	v1 "bookadmin/api/v1"
+	"bookadmin/middleware"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,6 +12,7 @@ func InitRankingRouter(router *gin.RouterGroup) {
 	rankingAPI := v1.NewRankingAPI()
 	
 	rankingRouter := router.Group("/ranking")
+	rankingRouter.Use(middleware.JWTAuth()) // 需要登录，便于读取role做鉴权
 	{
 		// 通用榜单查询接口
 		rankingRouter.GET("/list", rankingAPI.GetRanking)   // 统一榜单查询

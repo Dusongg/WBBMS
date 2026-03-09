@@ -89,17 +89,23 @@ func (s *RankingService) GetRanking(ctx context.Context, rankingType model.Ranki
 
 	// 5. 构建榜单响应
 	items := make([]model.RankingItem, 0, len(rankData))
-	for i, data := range rankData {
+	for _, data := range rankData {
 		bookID, _ := strconv.ParseUint(data.Member.(string), 10, 32)
+		score := int64(data.Score)
+
+		// 历史异常数据兜底：榜单分数不应为负数
+		if score <= 0 {
+			continue
+		}
 
 		// 查询图书详情
 		var book model.Book
 		if err := global.GVA_DB.First(&book, bookID).Error; err == nil {
 			items = append(items, model.RankingItem{
-				Rank:   i + 1,
+				Rank:   len(items) + 1,
 				BookID: uint(bookID),
 				Book:   &book,
-				Score:  int64(data.Score),
+				Score:  score,
 			})
 		}
 	}

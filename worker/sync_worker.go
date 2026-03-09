@@ -182,8 +182,13 @@ func (w *SyncWorker) processLikeMessages(streamName string, messages []redis.XMe
 
 		// 处理取消点赞
 		for _, unlike := range unlikes {
-			if err := tx.Where("user_id = ? AND book_id = ?", unlike.UserID, unlike.BookID).
-				Delete(&model.BookLike{}).Error; err != nil {
+			result := tx.Where("user_id = ? AND book_id = ?", unlike.UserID, unlike.BookID).
+				Delete(&model.BookLike{})
+			if result.Error != nil {
+				continue
+			}
+			// 仅在确实删除到点赞记录时，才减少图书统计
+			if result.RowsAffected == 0 {
 				continue
 			}
 			// 更新books表统计
@@ -251,8 +256,13 @@ func (w *SyncWorker) processFavoriteMessages(streamName string, messages []redis
 		}
 
 		for _, unfavorite := range unfavorites {
-			if err := tx.Where("user_id = ? AND book_id = ?", unfavorite.UserID, unfavorite.BookID).
-				Delete(&model.BookFavorite{}).Error; err != nil {
+			result := tx.Where("user_id = ? AND book_id = ?", unfavorite.UserID, unfavorite.BookID).
+				Delete(&model.BookFavorite{})
+			if result.Error != nil {
+				continue
+			}
+			// 仅在确实删除到收藏记录时，才减少图书统计
+			if result.RowsAffected == 0 {
 				continue
 			}
 			tx.Model(&model.Book{}).

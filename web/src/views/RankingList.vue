@@ -1,141 +1,131 @@
 <template>
   <div class="ranking-page">
-    <!-- 顶部导航栏 -->
-    <div class="ranking-header">
-      <h1 class="ranking-title">📊 图书榜单</h1>
-      
-      <!-- 榜单类型切换 -->
-      <div class="ranking-tabs">
-        <button 
-          class="tab-btn"
-          :class="{ active: currentType === 'like' }"
-          @click="switchType('like')"
-        >
-          ❤️ 点赞榜
-        </button>
-        <button 
-          class="tab-btn"
-          :class="{ active: currentType === 'favorite' }"
-          @click="switchType('favorite')"
-        >
-          ⭐ 收藏榜
-        </button>
-      </div>
-      
-      <!-- 周期切换 -->
-      <div class="period-tabs">
-        <button 
-          class="period-btn"
-          :class="{ active: currentPeriod === 'week' }"
-          @click="switchPeriod('week')"
-        >
-          📅 周榜
-        </button>
-        <button 
-          class="period-btn"
-          :class="{ active: currentPeriod === 'month' }"
-          @click="switchPeriod('month')"
-        >
-          📆 月榜
-        </button>
-      </div>
-    </div>
-
-    <!-- 榜单信息 -->
-    <div v-if="rankingData" class="ranking-info">
-      <div class="info-item">
-        <span class="info-label">榜单周期：</span>
-        <span class="info-value">{{ rankingData.period_key }}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">更新时间：</span>
-        <span class="info-value">{{ formatTime(rankingData.updated_at) }}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">上榜图书：</span>
-        <span class="info-value">{{ rankingData.total }} 本</span>
-      </div>
-    </div>
-
-    <!-- 加载状态 -->
-    <div v-if="loading" class="loading-container">
-      <el-icon class="is-loading"><Loading /></el-icon>
-      <p>加载榜单中...</p>
-    </div>
-
-    <!-- 榜单列表 -->
-    <div v-else-if="rankingData && rankingData.items && rankingData.items.length > 0" class="ranking-list">
-      <div 
-        v-for="item in rankingData.items" 
-        :key="item.book_id"
-        class="ranking-item"
-        :class="{ 
-          'rank-1': item.rank === 1,
-          'rank-2': item.rank === 2,
-          'rank-3': item.rank === 3
-        }"
-      >
-        <!-- 排名 -->
-        <div class="rank-badge">
-          <span v-if="item.rank === 1" class="medal gold">🥇</span>
-          <span v-else-if="item.rank === 2" class="medal silver">🥈</span>
-          <span v-else-if="item.rank === 3" class="medal bronze">🥉</span>
-          <span v-else class="rank-number">{{ item.rank }}</span>
+    <div class="ranking-shell">
+      <div class="ranking-header">
+        <div class="header-main">
+          <h1 class="ranking-title">图书榜单</h1>
+          <p class="ranking-subtitle">按点赞与收藏热度，查看本周/本月最受欢迎图书</p>
         </div>
 
-        <!-- 图书封面 -->
-        <div class="book-cover">
-          <img 
-            v-if="item.book && item.book.cover_image"
-            :src="item.book.cover_image"
-            :alt="item.book.title"
-            referrerpolicy="no-referrer"
-            @error="handleImageError"
-          />
-          <div v-else class="cover-placeholder">
-            <span>📚</span>
+        <div class="ranking-tabs">
+          <button
+            class="tab-btn"
+            :class="{ active: currentType === 'like' }"
+            @click="switchType('like')"
+          >
+            点赞榜
+          </button>
+          <button
+            class="tab-btn"
+            :class="{ active: currentType === 'favorite' }"
+            @click="switchType('favorite')"
+          >
+            收藏榜
+          </button>
+        </div>
+
+        <div class="period-tabs">
+          <button
+            class="period-btn"
+            :class="{ active: currentPeriod === 'week' }"
+            @click="switchPeriod('week')"
+          >
+            周榜
+          </button>
+          <button
+            class="period-btn"
+            :class="{ active: currentPeriod === 'month' }"
+            @click="switchPeriod('month')"
+          >
+            月榜
+          </button>
+        </div>
+      </div>
+
+      <div v-if="rankingData" class="ranking-info">
+        <div class="info-item">
+          <span class="info-label">榜单周期</span>
+          <span class="info-value">{{ rankingData.period_key }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">更新时间</span>
+          <span class="info-value">{{ formatTime(rankingData.updated_at) }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">上榜图书</span>
+          <span class="info-value">{{ rankingData.total }} 本</span>
+        </div>
+      </div>
+
+      <div v-if="loading" class="loading-container">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <p>加载榜单中...</p>
+      </div>
+
+      <div v-else-if="rankingData && rankingData.items && rankingData.items.length > 0" class="ranking-list">
+        <div
+          v-for="item in rankingData.items"
+          :key="item.book_id"
+          class="ranking-item"
+          :class="{
+            'rank-1': item.rank === 1,
+            'rank-2': item.rank === 2,
+            'rank-3': item.rank === 3
+          }"
+        >
+          <div class="rank-badge">
+            <span class="rank-number">{{ String(item.rank).padStart(2, '0') }}</span>
+          </div>
+
+          <div class="book-cover">
+            <img
+              v-if="item.book && item.book.cover_image"
+              :src="item.book.cover_image"
+              :alt="item.book.title"
+              referrerpolicy="no-referrer"
+              @error="handleImageError"
+            />
+            <div v-else class="cover-placeholder">
+              <span>BOOK</span>
+            </div>
+          </div>
+
+          <div class="book-info">
+            <h3 class="book-title">{{ item.book ? item.book.title : `图书 ID: ${item.book_id}` }}</h3>
+            <p v-if="item.book && item.book.author" class="book-author">{{ item.book.author }}</p>
+            <div v-if="item.book && item.book.categories && item.book.categories.length > 0" class="book-categories">
+              <span
+                v-for="cat in item.book.categories.slice(0, 3)"
+                :key="cat.id"
+                class="category-tag"
+              >
+                {{ cat.name }}
+              </span>
+            </div>
+          </div>
+
+          <div class="score-badge">
+            <span class="score-label">{{ currentType === 'like' ? 'LIKES' : 'FAV' }}</span>
+            <span class="score-value">{{ item.score }}</span>
           </div>
         </div>
-
-        <!-- 图书信息 -->
-        <div class="book-info">
-          <h3 class="book-title">{{ item.book ? item.book.title : `图书 ID: ${item.book_id}` }}</h3>
-          <p v-if="item.book && item.book.author" class="book-author">作者：{{ item.book.author }}</p>
-          <div v-if="item.book && item.book.categories && item.book.categories.length > 0" class="book-categories">
-            <span 
-              v-for="cat in item.book.categories.slice(0, 3)" 
-              :key="cat.id"
-              class="category-tag"
-            >
-              {{ cat.name }}
-            </span>
-          </div>
-        </div>
-
-        <!-- 分数 -->
-        <div class="score-badge">
-          <span class="score-icon">{{ currentType === 'like' ? '❤️' : '⭐' }}</span>
-          <span class="score-value">{{ item.score }}</span>
-        </div>
       </div>
-    </div>
 
-    <!-- 空状态 -->
-    <div v-else class="empty-state">
-      <el-icon class="empty-icon"><Document /></el-icon>
-      <p>暂无榜单数据</p>
-      <p class="empty-hint">{{ getEmptyHint() }}</p>
-    </div>
+      <div v-else class="empty-state">
+        <el-icon class="empty-icon"><Document /></el-icon>
+        <p>暂无榜单数据</p>
+        <p class="empty-hint">{{ getEmptyHint() }}</p>
+      </div>
 
-    <!-- 管理员操作：重建榜单 -->
-    <div v-if="hasAdminRole()" class="admin-actions">
-      <el-button 
-        type="warning" 
-        :loading="rebuilding"
-        @click="handleRebuild"
-      >
-        🔄 重建当前榜单
-      </el-button>
+      <div v-if="hasAdminRole()" class="admin-actions">
+        <el-button
+          type="warning"
+          :loading="rebuilding"
+          @click="handleRebuild"
+        >
+          重建当前榜单
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
@@ -145,7 +135,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading, Document } from '@element-plus/icons-vue'
 import { getRanking, rebuildRanking } from '@/api/ranking'
-import { hasAdminOrLibrarianRole } from '@/utils/auth'
+import { isAdmin } from '@/utils/auth'
 
 export default {
   name: 'RankingList',
@@ -162,7 +152,7 @@ export default {
 
     // 检查是否是管理员
     const hasAdminRole = () => {
-      return hasAdminOrLibrarianRole()
+      return isAdmin()
     }
 
     // 获取榜单数据
@@ -294,207 +284,221 @@ export default {
 
 <style scoped>
 .ranking-page {
+  --rank-bg: #f5f7fb;
+  --rank-panel-bg: rgba(255, 255, 255, 0.92);
+  --rank-panel-border: rgba(15, 23, 42, 0.08);
+  --rank-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  --rank-text: #0f172a;
+  --rank-muted: #64748b;
+  --rank-soft: #e2e8f0;
+  --rank-accent: #3b82f6;
+  --rank-accent-soft: rgba(59, 130, 246, 0.14);
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
+  background: var(--rank-bg);
+  padding: 24px 20px 120px;
 }
 
-/* 顶部导航栏 */
+.ranking-shell {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+}
+
 .ranking-header {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
-  padding: 30px;
-  margin-bottom: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  background: var(--rank-panel-bg);
+  border: 1px solid var(--rank-panel-border);
+  box-shadow: var(--rank-shadow);
+  border-radius: 16px;
+  padding: 22px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.header-main {
+  min-width: 0;
 }
 
 .ranking-title {
-  font-size: 32px;
-  font-weight: bold;
-  color: #2d3748;
-  margin: 0 0 20px 0;
-  text-align: center;
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.2;
+  color: var(--rank-text);
+  letter-spacing: 0.02em;
 }
 
-/* 榜单类型切换 */
+.ranking-subtitle {
+  margin: 6px 0 0;
+  color: var(--rank-muted);
+  font-size: 13px;
+}
+
 .ranking-tabs {
   display: flex;
-  gap: 15px;
-  justify-content: center;
-  margin-bottom: 20px;
+  gap: 8px;
+  background: var(--rank-soft);
+  padding: 4px;
+  border-radius: 999px;
 }
 
 .tab-btn {
-  flex: 1;
-  max-width: 200px;
-  padding: 15px 30px;
-  font-size: 18px;
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 600;
-  border: 3px solid #e2e8f0;
-  border-radius: 15px;
-  background: white;
-  color: #64748b;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rank-muted);
   cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.tab-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .tab-btn.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-color: transparent;
-  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+  background: var(--rank-panel-bg);
+  color: var(--rank-text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
-/* 周期切换 */
 .period-tabs {
   display: flex;
-  gap: 10px;
-  justify-content: center;
+  gap: 8px;
+  background: var(--rank-soft);
+  padding: 4px;
+  border-radius: 999px;
 }
 
 .period-btn {
-  padding: 10px 25px;
-  font-size: 16px;
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 500;
-  border: 2px solid #e2e8f0;
-  border-radius: 10px;
-  background: white;
-  color: #64748b;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--rank-muted);
   cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.period-btn:hover {
-  border-color: #667eea;
-  color: #667eea;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .period-btn.active {
-  background: #667eea;
-  color: white;
-  border-color: #667eea;
+  background: var(--rank-accent-soft);
+  color: var(--rank-accent);
 }
 
-/* 榜单信息 */
 .ranking-info {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 15px;
-  padding: 20px;
-  margin-bottom: 20px;
+  background: var(--rank-panel-bg);
+  border: 1px solid var(--rank-panel-border);
+  box-shadow: var(--rank-shadow);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
   display: flex;
-  gap: 30px;
-  justify-content: center;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .info-item {
+  flex: 1;
+  min-width: 180px;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(148, 163, 184, 0.08);
 }
 
 .info-label {
-  color: #64748b;
+  color: var(--rank-muted);
+  font-size: 12px;
   font-weight: 500;
 }
 
 .info-value {
-  color: #2d3748;
+  color: var(--rank-text);
   font-weight: 600;
+  font-size: 14px;
 }
 
-/* 加载状态 */
 .loading-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 20px;
-  color: #667eea;
+  padding: 60px 20px;
+  background: var(--rank-panel-bg);
+  border: 1px solid var(--rank-panel-border);
+  border-radius: 16px;
+  color: var(--rank-accent);
 }
 
 .loading-container .el-icon {
-  font-size: 48px;
-  margin-bottom: 15px;
+  font-size: 36px;
+  margin-bottom: 10px;
 }
 
-/* 榜单列表 */
 .ranking-list {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 10px;
 }
 
 .ranking-item {
   display: flex;
   align-items: center;
-  gap: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 15px;
-  padding: 20px;
-  transition: all 0.3s ease;
-  border: 2px solid transparent;
+  gap: 14px;
+  background: var(--rank-panel-bg);
+  border: 1px solid var(--rank-panel-border);
+  border-radius: 14px;
+  padding: 14px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .ranking-item:hover {
-  transform: translateX(5px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+  box-shadow: var(--rank-shadow);
 }
 
 .ranking-item.rank-1 {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 223, 0, 0.1));
-  border-color: #ffd700;
+  border-color: rgba(245, 158, 11, 0.45);
 }
 
 .ranking-item.rank-2 {
-  background: linear-gradient(135deg, rgba(192, 192, 192, 0.2), rgba(192, 192, 192, 0.1));
-  border-color: #c0c0c0;
+  border-color: rgba(148, 163, 184, 0.55);
 }
 
 .ranking-item.rank-3 {
-  background: linear-gradient(135deg, rgba(205, 127, 50, 0.2), rgba(205, 127, 50, 0.1));
-  border-color: #cd7f32;
+  border-color: rgba(180, 83, 9, 0.4);
 }
 
-/* 排名徽章 */
 .rank-badge {
-  flex-shrink: 0;
-  width: 60px;
-  height: 60px;
-  display: flex;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.16);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 36px;
-  font-weight: bold;
-}
-
-.medal {
-  font-size: 48px;
+  flex-shrink: 0;
 }
 
 .rank-number {
-  color: #667eea;
-  font-size: 28px;
+  color: var(--rank-accent);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
-/* 图书封面 */
 .book-cover {
   flex-shrink: 0;
-  width: 80px;
-  height: 120px;
+  width: 64px;
+  height: 94px;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: rgba(148, 163, 184, 0.16);
 }
 
 .book-cover img {
@@ -509,140 +513,142 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  font-size: 36px;
+  color: var(--rank-muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
 }
 
-/* 图书信息 */
 .book-info {
   flex: 1;
   min-width: 0;
 }
 
 .book-title {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
-  color: #2d3748;
-  margin: 0 0 8px 0;
+  color: var(--rank-text);
+  margin: 0 0 4px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .book-author {
-  font-size: 14px;
-  color: #64748b;
-  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: var(--rank-muted);
+  margin: 0 0 6px 0;
 }
 
 .book-categories {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .category-tag {
-  padding: 4px 12px;
-  background: #e0e7ff;
-  color: #667eea;
-  border-radius: 6px;
-  font-size: 12px;
+  padding: 2px 8px;
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--rank-muted);
+  border-radius: 999px;
+  font-size: 11px;
   font-weight: 500;
 }
 
-/* 分数徽章 */
 .score-badge {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 15px 20px;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  border-radius: 12px;
-  color: white;
+  gap: 2px;
+  min-width: 72px;
+  padding: 8px 10px;
+  background: var(--rank-accent-soft);
+  border-radius: 10px;
+  color: var(--rank-accent);
 }
 
-.score-icon {
-  font-size: 24px;
+.score-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  opacity: 0.9;
 }
 
 .score-value {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: bold;
+  line-height: 1;
 }
 
-/* 空状态 */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 80px 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 20px;
-  color: #64748b;
+  padding: 70px 20px;
+  background: var(--rank-panel-bg);
+  border: 1px solid var(--rank-panel-border);
+  border-radius: 16px;
+  color: var(--rank-muted);
 }
 
 .empty-icon {
-  font-size: 64px;
-  margin-bottom: 20px;
-  color: #cbd5e0;
+  font-size: 52px;
+  margin-bottom: 12px;
+  color: rgba(148, 163, 184, 0.8);
 }
 
 .empty-state p {
-  font-size: 18px;
+  font-size: 16px;
   margin: 5px 0;
 }
 
 .empty-hint {
-  color: #a0aec0;
-  font-size: 14px;
+  color: var(--rank-muted);
+  opacity: 0.8;
+  font-size: 13px;
 }
 
-/* 管理员操作 */
 .admin-actions {
   display: flex;
   justify-content: center;
-  margin-top: 20px;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 15px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--rank-panel-bg);
+  border: 1px solid var(--rank-panel-border);
+  border-radius: 14px;
 }
 
-/* 响应式设计 */
+:global(body.app-theme-dark .ranking-page) {
+  --rank-bg: #0f172a;
+  --rank-panel-bg: rgba(15, 23, 42, 0.88);
+  --rank-panel-border: rgba(148, 163, 184, 0.24);
+  --rank-shadow: 0 10px 30px rgba(2, 6, 23, 0.55);
+  --rank-text: #f8fafc;
+  --rank-muted: #cbd5e1;
+  --rank-soft: rgba(148, 163, 184, 0.18);
+  --rank-accent: #93c5fd;
+  --rank-accent-soft: rgba(59, 130, 246, 0.24);
+}
+
 @media (max-width: 768px) {
+  .ranking-page {
+    padding: 16px 12px 110px;
+  }
+
   .ranking-header {
-    padding: 20px;
+    grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 10px;
   }
 
   .ranking-title {
     font-size: 24px;
   }
 
-  .ranking-tabs {
-    flex-direction: column;
-  }
-
-  .tab-btn {
-    max-width: none;
-  }
-
   .ranking-item {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .rank-badge {
-    order: -1;
-  }
-
-  .book-info {
-    order: 1;
-  }
-
-  .score-badge {
-    order: 2;
+    gap: 10px;
+    padding: 12px;
   }
 }
 </style>

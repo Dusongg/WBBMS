@@ -106,7 +106,48 @@ func (r *RedisService) SetBookStats(ctx context.Context, bookID uint, likeCount,
 
 // IncrRankingScore 增加榜单分数
 func (r *RedisService) IncrRankingScore(ctx context.Context, key string, bookID uint, delta float64) error {
-	return global.GVA_REDIS.ZIncrBy(ctx, key, delta, fmt.Sprintf("%d", bookID)).Err()
+	member := fmt.Sprintf("%d", bookID)
+
+	// 负向变更兜底：不存在或已<=0时不再继续扣分，避免出现负数
+	if delta < 0 {
+		current, err := global.GVA_REDIS.ZScore(ctx, key, member).Result()
+		if err == redis.Nil {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if current <= 0 {
+			return global.GVA_REDIS.ZRem(ctx, key, member).Err()
+		}
+	}
+
+	// 正向变更修复：历史脏数据可能为负数，先矫正到0再累加
+	if delta > 0 {
+		current, err := global.GVA_REDIS.ZScore(ctx, key, member).Result()
+		if err != nil && err != redis.Nil {
+			return err
+		}
+		if err == nil && current < 0 {
+			if err := global.GVA_REDIS.ZAdd(ctx, key, redis.Z{
+				Score:  0,
+				Member: member,
+			}).Err(); err != nil {
+				return err
+			}
+		}
+	}
+
+	newScore, err := global.GVA_REDIS.ZIncrBy(ctx, key, delta, member).Result()
+	if err != nil {
+		return err
+	}
+
+	// 统一收口：<=0 直接移除，不在榜单展示
+	if newScore <= 0 {
+		return global.GVA_REDIS.ZRem(ctx, key, member).Err()
+	}
+	return nil
 }
 
 // GetRankingTop 获取榜单前N名
