@@ -1,9 +1,9 @@
 <template>
-  <el-container class="layout-container">
+  <el-container class="layout-container" :class="`theme-${themeMode}`">
     <el-main class="main">
       <router-view />
     </el-main>
-    
+
     <!-- 底部功能栏 -->
     <div class="bottom-bar">
       <div class="bottom-bar-content">
@@ -109,6 +109,29 @@
             <el-icon><CollectionTag /></el-icon>
           </button>
         </el-tooltip>
+        <div class="bottom-divider"></div>
+        <div class="theme-switch theme-switch-in-bar" role="group" aria-label="Main theme mode">
+          <el-tooltip content="亮色模式" placement="top" :show-after="100" :hide-after="0">
+            <button
+              class="bottom-btn theme-switch-btn"
+              :class="{ active: themeMode === 'light' }"
+              aria-label="切换亮色模式"
+              @click="setThemeMode('light')"
+            >
+              <el-icon><Sunny /></el-icon>
+            </button>
+          </el-tooltip>
+          <el-tooltip content="暗色模式" placement="top" :show-after="100" :hide-after="0">
+            <button
+              class="bottom-btn theme-switch-btn"
+              :class="{ active: themeMode === 'dark' }"
+              aria-label="切换暗色模式"
+              @click="setThemeMode('dark')"
+            >
+              <el-icon><MoonNight /></el-icon>
+            </button>
+          </el-tooltip>
+        </div>
       </div>
     </div>
   </el-container>
@@ -128,7 +151,9 @@ import {
   UserFilled,
   TrendCharts,
   Star,
-  CollectionTag
+  CollectionTag,
+  Sunny,
+  MoonNight
 } from '@element-plus/icons-vue'
 import { hasAdminOrLibrarianRole, isAdmin, getUserInfo, removeToken } from '../utils/auth'
 
@@ -144,11 +169,27 @@ export default {
     UserFilled,
     TrendCharts,
     Star,
-    CollectionTag
+    CollectionTag,
+    Sunny,
+    MoonNight
   },
   setup() {
     const router = useRouter()
     const userInfo = ref(null)
+    const themeMode = ref(localStorage.getItem('app-theme-mode') === 'dark' ? 'dark' : 'light')
+
+    const applyThemeToDom = (mode) => {
+      document.documentElement.setAttribute('data-app-theme', mode)
+      document.body.classList.remove('app-theme-light', 'app-theme-dark')
+      document.body.classList.add(mode === 'dark' ? 'app-theme-dark' : 'app-theme-light')
+    }
+
+    const setThemeMode = (mode) => {
+      if (mode !== 'light' && mode !== 'dark') return
+      themeMode.value = mode
+      localStorage.setItem('app-theme-mode', mode)
+      applyThemeToDom(mode)
+    }
 
     const handleUserCommand = (command) => {
       if (command === 'logout') {
@@ -168,10 +209,13 @@ export default {
 
     onMounted(() => {
       userInfo.value = getUserInfo()
+      applyThemeToDom(themeMode.value)
     })
 
     return {
       userInfo,
+      themeMode,
+      setThemeMode,
       handleUserCommand,
       hasAdminOrLibrarianRole,
       isAdmin
@@ -182,11 +226,22 @@ export default {
 
 <style scoped>
 .layout-container {
+  --layout-bg: #f5f5f5;
+  --panel-bg: rgba(255, 255, 255, 0.95);
+  --panel-border: rgba(15, 23, 42, 0.08);
+  --panel-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  --btn-fg: #6b7280;
+  --btn-hover-fg: #111827;
+  --btn-hover-bg: rgba(0, 0, 0, 0.05);
+  --btn-active-bg: rgba(59, 130, 246, 0.1);
+  --btn-active-fg: #3b82f6;
+  --divider-color: #e5e7eb;
+  --user-fg: #374151;
   height: 100vh;
 }
 
 .main {
-  background-color: #f5f5f5;
+  background-color: var(--layout-bg);
   padding: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -204,11 +259,12 @@ export default {
 }
 
 .bottom-bar-content {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--panel-bg);
   backdrop-filter: blur(12px);
   border-radius: 9999px;
   padding: 12px 20px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--panel-shadow);
+  border: 1px solid var(--panel-border);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -223,7 +279,7 @@ export default {
   background: none;
   border: none;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--btn-fg);
   font-size: 20px;
   padding: 0 12px;
   border-radius: 20px;
@@ -231,19 +287,19 @@ export default {
 }
 
 .bottom-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #111827;
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-fg);
 }
 
 .bottom-btn.active {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  background: var(--btn-active-bg);
+  color: var(--btn-active-fg);
 }
 
 .bottom-divider {
   width: 1px;
   height: 24px;
-  background: #e5e7eb;
+  background: var(--divider-color);
   margin: 0 8px;
 }
 
@@ -257,8 +313,50 @@ export default {
 .user-name {
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: var(--user-fg);
   white-space: nowrap;
+}
+
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.theme-switch-in-bar .theme-switch-btn {
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+}
+
+.theme-switch-btn:hover {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-fg);
+}
+
+.theme-switch-btn.active {
+  background: var(--btn-active-bg);
+  color: var(--btn-active-fg);
+}
+
+.layout-container.theme-dark {
+  --layout-bg: #0f172a;
+  --panel-bg: rgba(15, 23, 42, 0.88);
+  --panel-border: rgba(148, 163, 184, 0.24);
+  --panel-shadow: 0 10px 30px rgba(2, 6, 23, 0.55);
+  --btn-fg: #cbd5e1;
+  --btn-hover-fg: #f8fafc;
+  --btn-hover-bg: rgba(148, 163, 184, 0.18);
+  --btn-active-bg: rgba(59, 130, 246, 0.26);
+  --btn-active-fg: #93c5fd;
+  --divider-color: rgba(148, 163, 184, 0.35);
+  --user-fg: #e2e8f0;
+}
+
+.layout-container.theme-dark :deep(.book-gallery-page) {
+  background: linear-gradient(to bottom right, #0f172a, #1e293b);
 }
 
 /* 自定义tooltip样式 */

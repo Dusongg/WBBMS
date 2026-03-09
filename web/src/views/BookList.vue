@@ -8,6 +8,7 @@
           placement="bottom-start"
           :width="300"
           trigger="click"
+          popper-class="category-popover-panel"
         >
           <template #reference>
             <el-button circle class="nav-icon-btn">
@@ -4356,5 +4357,111 @@ h2.category-title[data-status="reserved"] {
   margin: 0;
   color: #606266;
   font-size: 13px;
+}
+
+/* 暗色模式：顶部栏、弹层、列表视图统一到底部栏风格 */
+:global(body.app-theme-dark .book-gallery-page .nav-icon-btn) {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.55);
+  color: #cbd5e1;
+}
+
+:global(body.app-theme-dark .book-gallery-page .top-search-input .el-input__wrapper) {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.55);
+}
+
+:global(body.app-theme-dark .book-gallery-page .top-search-input .el-input__inner) {
+  color: #e2e8f0;
+}
+
+:global(body.app-theme-dark .book-gallery-page .top-search-input .el-input__inner::placeholder) {
+  color: #94a3b8;
+}
+
+:global(body.app-theme-dark .book-gallery-page .nav-tabs) {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.55);
+}
+
+:global(body.app-theme-dark .book-gallery-page .nav-tab) {
+  color: #cbd5e1;
+}
+
+:global(body.app-theme-dark .book-gallery-page .nav-tab.active) {
+  color: #f8fafc;
+}
+
+:global(body.app-theme-dark .book-gallery-page .nav-divider) {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+:global(body.app-theme-dark .book-gallery-page .list-view) {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.55);
+}
+
+:global(body.app-theme-dark .book-gallery-page .list-view .el-table) {
+  --el-table-border-color: rgba(148, 163, 184, 0.25);
+  --el-table-header-bg-color: rgba(30, 41, 59, 0.95);
+  --el-table-tr-bg-color: rgba(15, 23, 42, 0.86);
+  --el-table-row-hover-bg-color: rgba(51, 65, 85, 0.7);
+  --el-table-bg-color: rgba(15, 23, 42, 0.86);
+  --el-table-text-color: #e2e8f0;
+  --el-table-header-text-color: #cbd5e1;
+  background-color: transparent;
+  color: #e2e8f0;
+}
+
+:global(body.app-theme-dark .book-gallery-page .list-view .el-table th.el-table__cell) {
+  background-color: rgba(30, 41, 59, 0.95);
+  color: #cbd5e1;
+}
+
+:global(body.app-theme-dark .book-gallery-page .list-view .el-table td.el-table__cell),
+:global(body.app-theme-dark .book-gallery-page .list-view .el-table tr) {
+  background-color: transparent;
+  color: #e2e8f0;
+}
+
+:global(body.app-theme-dark .book-gallery-page .list-view .el-table__inner-wrapper::before) {
+  background-color: rgba(148, 163, 184, 0.25);
+}
+
+:global(body.app-theme-dark .el-popper.category-popover-panel),
+:global(body.app-theme-dark .el-popper.message-popover) {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border: 1px solid rgba(148, 163, 184, 0.24) !important;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.55) !important;
+}
+
+:global(body.app-theme-dark .el-popper.category-popover-panel .el-popper__arrow::before),
+:global(body.app-theme-dark .el-popper.message-popover .el-popper__arrow::before) {
+  background: rgba(15, 23, 42, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+:global(body.app-theme-dark .book-gallery-page .category-popover),
+:global(body.app-theme-dark .message-dropdown) {
+  color: #e2e8f0;
+}
+
+:global(body.app-theme-dark .book-gallery-page .category-popover-title),
+:global(body.app-theme-dark .book-gallery-page .toggle-label.active) {
+  color: #e2e8f0;
+}
+
+:global(body.app-theme-dark .book-gallery-page .toggle-label) {
+  color: #94a3b8;
+}
+
+:global(body.app-theme-dark .book-gallery-page .category-popover-divider),
+:global(body.app-theme-dark .book-gallery-page .category-popover-footer) {
+  border-color: rgba(148, 163, 184, 0.25);
+  background: transparent;
 }
 </style>
