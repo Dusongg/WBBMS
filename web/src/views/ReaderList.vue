@@ -1,9 +1,12 @@
 <template>
   <div class="reader-list">
-    <el-card>
+    <el-card class="reader-manage-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <span>读者管理</span>
+          <div class="title-wrap">
+            <span class="title-main">读者管理</span>
+            <span class="title-sub">借阅权限、审核与黑名单状态总览</span>
+          </div>
         </div>
       </template>
 
@@ -11,10 +14,10 @@
       <div class="search-bar">
         <el-input
           v-model="searchKeyword"
+          class="reader-search-input"
           placeholder="请输入读者编号、姓名、身份证号进行搜索"
           clearable
           @input="handleSearch"
-          style="width: 400px; margin-right: 10px;"
         >
           <template #prefix>
             <el-icon><SearchIcon /></el-icon>
@@ -24,8 +27,8 @@
 
       <!-- 读者表格 -->
       <el-table
+        class="reader-table"
         :data="readerList"
-        style="width: 100%; margin-top: 20px;"
         v-loading="loading"
         border
       >
@@ -42,6 +45,7 @@
         <el-table-column prop="status" label="状态" width="100">
           <template #default="scope">
             <el-tag
+              class="status-tag"
               :type="getStatusType(scope.row.status)"
             >
               {{ getStatusText(scope.row.status) }}
@@ -74,6 +78,14 @@
               @click="handleEdit(scope.row)"
             >
               编辑
+            </el-button>
+            <el-button
+              v-if="scope.row.status === 'inactive' || scope.row.is_blacklisted"
+              type="warning"
+              size="small"
+              @click="handleUnban(scope.row)"
+            >
+              解禁
             </el-button>
           </template>
         </el-table-column>
@@ -181,7 +193,7 @@ export default {
       const map = {
         pending: 'warning',
         active: 'success',
-        inactive: 'info',
+        inactive: 'danger',
         rejected: 'danger'
       }
       return map[status] || 'info'
@@ -191,10 +203,33 @@ export default {
       const map = {
         pending: '待审核',
         active: '正常',
-        inactive: '停用',
+        inactive: '已拉黑',
         rejected: '已拒绝'
       }
       return map[status] || status
+    }
+
+    const handleUnban = (row) => {
+      ElMessageBox.confirm('确定要解除该用户的黑名单并恢复借阅权限吗？', '解禁确认', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(async () => {
+        try {
+          const response = await axios.post(`/blacklist/removeByUser/${row.user_id}`, {
+            remark: '管理员在读者管理页手动解禁'
+          })
+          if (response.code === 200) {
+            ElMessage.success('解禁成功')
+            fetchReaderList()
+          } else {
+            ElMessage.error(response.msg || '解禁失败')
+          }
+        } catch (error) {
+          console.error('解禁失败:', error)
+          ElMessage.error('解禁失败')
+        }
+      }).catch(() => {})
     }
 
     const fetchReaderList = async () => {
@@ -348,6 +383,7 @@ export default {
       handleApprove,
       handleReject,
       handleEdit,
+      handleUnban,
       handleSubmit,
       handleDialogClose
     }
@@ -357,17 +393,101 @@ export default {
 
 <style scoped>
 .reader-list {
-  padding: 20px;
+  padding: 18px;
+}
+
+.reader-manage-card {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.54);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.12),
+    0 24px 60px rgba(15, 23, 42, 0.08);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title-main {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.title-sub {
+  font-size: 12px;
+  color: #64748b;
 }
 
 .search-bar {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
+}
+
+.reader-search-input {
+  width: min(460px, 100%);
+}
+
+.reader-table {
+  margin-top: 16px;
+}
+
+.reader-table :deep(.el-table__header-wrapper th),
+.reader-table :deep(.el-table__body-wrapper td) {
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.reader-table :deep(.el-table__row:hover > td) {
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+
+.status-tag {
+  border-radius: 999px;
+  font-weight: 600;
+  padding-inline: 10px;
 }
 
 .pagination {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+:global(body.app-theme-dark) .reader-manage-card,
+:global(.layout-container.theme-dark) .reader-manage-card {
+  background: rgba(15, 23, 42, 0.52);
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.48);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:global(body.app-theme-dark) .title-main,
+:global(.layout-container.theme-dark) .title-main {
+  color: #f8fafc;
+}
+
+:global(body.app-theme-dark) .title-sub,
+:global(.layout-container.theme-dark) .title-sub {
+  color: #cbd5e1;
+}
+
+:global(body.app-theme-dark) .reader-table .el-table__header-wrapper th,
+:global(body.app-theme-dark) .reader-table .el-table__body-wrapper td,
+:global(.layout-container.theme-dark) .reader-table .el-table__header-wrapper th,
+:global(.layout-container.theme-dark) .reader-table .el-table__body-wrapper td {
+  background: rgba(15, 23, 42, 0.52);
+  color: #e2e8f0;
 }
 </style>
 

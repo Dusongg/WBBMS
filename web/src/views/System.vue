@@ -366,6 +366,7 @@ export default {
       resetForm()
     }
 
+
     onMounted(() => {
       fetchUserList()
     })
@@ -418,5 +419,6 @@ export default {
   display: flex;
   justify-content: flex-end;
 }
+
 </style>
 

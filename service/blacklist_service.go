@@ -56,11 +56,92 @@ func (s *BlacklistService) AddToBlacklist(readerID uint, reason model.BlacklistR
 		return errors.New("更新读者状态失败")
 	}
 
+	// 发送站内通知（失败不影响主流程）
+	var reader model.Reader
+	if err := tx.Where("id = ?", readerID).First(&reader).Error; err == nil && reader.UserID > 0 {
+		title := "⚠️ 账户借阅权限已停用"
+		content := fmt.Sprintf("由于「%s」，您的读者账户已被加入黑名单并停用借阅权限。", reason)
+		if description != "" {
+			content += " 原因说明：" + description
+		}
+		_ = (&MessageService{}).CreateMessage(reader.UserID, model.MessageTypeSystem, title, content, nil, "blacklist")
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		return errors.New("添加黑名单失败")
 	}
 
 	global.GVA_LOG.Info("添加黑名单成功", zap.Uint("reader_id", readerID), zap.String("reason", string(reason)))
+	return nil
+}
+
+// RemoveActiveBlacklistByUserID 通过用户ID解除该用户的所有生效黑名单
+func (s *BlacklistService) RemoveActiveBlacklistByUserID(userID uint, operatorID uint, remark string) error {
+	tx := global.GVA_DB.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	var reader model.Reader
+	if err := tx.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+		tx.Rollback()
+		return errors.New("读者信息不存在")
+	}
+
+	var activeCount int64
+	if err := tx.Model(&model.Blacklist{}).
+		Where("reader_id = ? AND status = ?", reader.ID, model.BlacklistStatusActive).
+		Count(&activeCount).Error; err != nil {
+		tx.Rollback()
+		return errors.New("查询黑名单状态失败")
+	}
+	if activeCount == 0 {
+		tx.Rollback()
+		return errors.New("该用户当前不在黑名单中")
+	}
+
+	now := time.Now()
+	updateRemark := remark
+	if updateRemark == "" {
+		updateRemark = "管理员手动解禁"
+	}
+	if err := tx.Model(&model.Blacklist{}).
+		Where("reader_id = ? AND status = ?", reader.ID, model.BlacklistStatusActive).
+		Updates(map[string]interface{}{
+			"status":      model.BlacklistStatusLifted,
+			"lifted_date": now,
+			"operator_id": operatorID,
+			"remark":      updateRemark,
+		}).Error; err != nil {
+		tx.Rollback()
+		return errors.New("解除黑名单失败")
+	}
+
+	if err := tx.Model(&model.Reader{}).
+		Where("id = ?", reader.ID).
+		Updates(map[string]interface{}{
+			"is_blacklisted": false,
+			"status":         model.ReaderStatusActive,
+		}).Error; err != nil {
+		tx.Rollback()
+		return errors.New("更新读者状态失败")
+	}
+
+	// 发送站内通知（失败不影响主流程）
+	_ = (&MessageService{}).CreateMessage(
+		userID,
+		model.MessageTypeSystem,
+		"✅ 黑名单已解除",
+		"管理员已解除您的黑名单限制，借阅权限已恢复。",
+		nil,
+		"blacklist",
+	)
+
+	if err := tx.Commit().Error; err != nil {
+		return errors.New("解除黑名单失败")
+	}
 	return nil
 }
 
@@ -136,18 +217,26 @@ func (s *BlacklistService) CheckAndAddOverdueBlacklist() error {
 	if err := global.GVA_DB.Where("status IN (?) AND due_date < ?",
 		[]model.BorrowStatus{model.BorrowStatusBorrowed, model.BorrowStatusOverdue}, cutoffDate).
 		Preload("Reader").
+		Preload("Book").
 		Find(&overdueRecords).Error; err != nil {
 		return err
 	}
 
+	processedReaderIDs := make(map[uint]struct{}, len(overdueRecords))
 	for _, record := range overdueRecords {
+		// 同一轮任务内按 reader_id 去重，避免重复尝试拉黑同一读者
+		if _, exists := processedReaderIDs[record.ReaderID]; exists {
+			continue
+		}
+		processedReaderIDs[record.ReaderID] = struct{}{}
+
 		// 检查读者是否已在黑名单
 		if record.Reader.IsBlacklisted {
 			continue
 		}
 
 		// 计算逾期天数
-		overdueDays := int(time.Now().Sub(record.DueDate).Hours() / 24)
+		overdueDays := int(time.Since(record.DueDate).Hours() / 24)
 
 		// 添加到黑名单
 		description := fmt.Sprintf("借阅《%s》逾期%d天未还", record.Book.Title, overdueDays)

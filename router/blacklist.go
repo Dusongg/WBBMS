@@ -20,6 +20,7 @@ func InitBlacklistRouter(Router *gin.RouterGroup) {
 		blacklistRouter.GET("getBlacklistList", middleware.RequireRole(model.RoleAdmin, model.RoleLibrarian), blacklistApi.GetBlacklistList)    // 获取黑名单列表
 		blacklistRouter.POST("add", middleware.RequireRole(model.RoleAdmin, model.RoleLibrarian), blacklistApi.AddToBlacklist)                  // 添加黑名单
 		blacklistRouter.POST("remove/:id", middleware.RequireRole(model.RoleAdmin, model.RoleLibrarian), blacklistApi.RemoveFromBlacklist)      // 解除黑名单
+		blacklistRouter.POST("removeByUser/:userId", middleware.RequireRole(model.RoleAdmin, model.RoleLibrarian), blacklistApi.RemoveByUserID) // 按用户ID解禁
 	}
 }
 

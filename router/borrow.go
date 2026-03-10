@@ -24,6 +24,7 @@ func InitBorrowRouter(Router *gin.RouterGroup) {
 		borrowRouter.POST("renewBook", borrowApi.RenewBook)                     // 续借
 		borrowRouter.GET("getMyBorrowList", borrowApi.GetMyBorrowList)          // 获取我的借阅记录
 		borrowRouter.GET("getStatistics", borrowApi.GetBorrowStatistics)        // 获取我的借阅统计
+		borrowRouter.GET("getBookBorrowTrend", borrowApi.GetBookBorrowTrend)    // 获取单本图书借阅趋势
 		borrowRouter.POST("payFine", borrowApi.PayFine)                         // 支付罚款
 		borrowRouter.GET("getFineByRecord", borrowApi.GetFineByRecord)          // 根据借阅记录获取罚款信息
 	}

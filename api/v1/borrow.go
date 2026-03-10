@@ -420,6 +420,80 @@ func (b *BorrowApi) GetBorrowStatistics(c *gin.Context) {
 	}))
 }
 
+// GetBookBorrowTrend 获取单本图书借阅趋势（按天）
+func (b *BorrowApi) GetBookBorrowTrend(c *gin.Context) {
+	var req struct {
+		BookID uint `form:"book_id" binding:"required"`
+		Days   int  `form:"days"`
+	}
+	if err := c.ShouldBindQuery(&req); err != nil || req.BookID == 0 {
+		c.JSON(200, response.FailWithMessage("book_id 参数错误"))
+		return
+	}
+
+	if req.Days <= 0 {
+		req.Days = 7
+	}
+	if req.Days > 90 {
+		req.Days = 90
+	}
+
+	now := time.Now()
+	endDate := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, now.Location())
+	startDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(req.Days - 1))
+
+	type dailyCount struct {
+		DayKey string `json:"day_key" gorm:"column:day_key"`
+		Count  int64  `json:"count"`
+	}
+
+	var rows []dailyCount
+	if err := global.GVA_DB.Model(&model.BorrowRecord{}).
+		Select("DATE_FORMAT(borrow_date, '%Y-%m-%d') AS day_key, COUNT(*) AS count").
+		Where("book_id = ? AND borrow_date >= ? AND borrow_date <= ? AND status <> ?", req.BookID, startDate, endDate, model.BorrowStatusRejected).
+		Group("DATE_FORMAT(borrow_date, '%Y-%m-%d')").
+		Order("day_key ASC").
+		Scan(&rows).Error; err != nil {
+		global.GVA_LOG.Error("获取图书借阅趋势失败", zap.Error(err))
+		c.JSON(200, response.FailWithMessage("获取图书借阅趋势失败"))
+		return
+	}
+
+	countMap := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		if row.DayKey == "" {
+			continue
+		}
+		countMap[row.DayKey] = row.Count
+	}
+
+	series := make([]gin.H, 0, req.Days)
+	var total int64 = 0
+	var peak int64 = 0
+	for i := 0; i < req.Days; i++ {
+		day := startDate.AddDate(0, 0, i)
+		dayKey := day.Format("2006-01-02")
+		count := countMap[dayKey]
+		total += count
+		if count > peak {
+			peak = count
+		}
+		series = append(series, gin.H{
+			"date":  dayKey,
+			"label": fmt.Sprintf("%dd", i+1),
+			"count": count,
+		})
+	}
+
+	c.JSON(200, response.OkWithData(gin.H{
+		"book_id": req.BookID,
+		"days":    req.Days,
+		"series":  series,
+		"total":   total,
+		"peak":    peak,
+	}))
+}
+
 // PayFine 支付罚款（根据借阅记录ID）
 func (b *BorrowApi) PayFine(c *gin.Context) {
 	var req struct {

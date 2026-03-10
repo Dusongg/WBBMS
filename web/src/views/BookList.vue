@@ -711,6 +711,16 @@
                 <line x1="10" y1="160" x2="610" y2="160" class="trend-baseline" />
                 <path :d="detailTrendData.areaPath" fill="url(#detail-trend-fill)" />
                 <path :d="detailTrendData.linePath" class="trend-line" />
+                <text
+                  v-for="point in detailTrendData.points"
+                  :key="`point-value-${point.label}`"
+                  :x="Math.min(Math.max(point.x, 20), 600)"
+                  :y="Math.max(point.y - 10, 18)"
+                  class="trend-point-value"
+                  text-anchor="middle"
+                >
+                  {{ point.value }}
+                </text>
                 <circle
                   v-for="point in detailTrendData.points"
                   :key="point.label"
@@ -949,6 +959,7 @@ export default {
     const messageLoading = ref(false)
     const messagePage = ref(1)
     const messagePageSize = ref(10)
+    let unreadPollingTimer = null
     
     // 点赞/收藏/借阅状态管理
     const likeStatus = ref({}) // { bookId: { isLiked: boolean, likeCount: number } }
@@ -964,8 +975,11 @@ export default {
     const searchInputRef = ref(null)
     const bookDetailVisible = ref(false)
     const selectedBook = ref(null)
+    const detailTrendRemoteData = ref(null)
     const detailScrollRef = ref(null)
     const detailScrollProgress = ref(0)
+    let detailScrollRafId = 0
+    let pendingDetailScrollProgress = 0
     const detailThemeMode = ref('light')
     let themeClassObserver = null
     const dialogVisible = ref(false)
@@ -1547,6 +1561,7 @@ export default {
         if (index === currentCenterIndex.value) {
           selectedBook.value = book
           bookDetailVisible.value = true
+          fetchDetailTrend(getBookId(book))
         } else {
           // 如果点击的不是中心图书，滑动到该图书
           currentCenterIndex.value = index
@@ -1563,6 +1578,7 @@ export default {
         if (index === category.centerIndex) {
           selectedBook.value = book
           bookDetailVisible.value = true
+          fetchDetailTrend(getBookId(book))
         } else {
           // 如果点击的不是中心图书，滑动到该图书
           if (viewMode.value === 'borrow' && borrowCategorizedBooks.value.length > 0) {
@@ -2229,6 +2245,10 @@ export default {
               }
             }
             ElMessage.success('借阅申请已提交，等待管理员审批 📝')
+            const currentDetailBookId = getBookId(selectedBook.value)
+            if (currentDetailBookId && String(currentDetailBookId) === String(bookId)) {
+              await fetchDetailTrend(bookId)
+            }
           } else if (response.code === 4001) {
             // 库存不足，提示用户预约
             await handleStockInsufficient(bookId)
@@ -2324,6 +2344,21 @@ export default {
       } catch (error) {
         console.error('获取未读数量失败:', error)
       }
+    }
+
+    const startUnreadPolling = () => {
+      if (unreadPollingTimer) return
+      unreadPollingTimer = setInterval(() => {
+        // 页面不可见时不轮询，减少无意义请求
+        if (document.hidden) return
+        fetchUnreadCount()
+      }, 60000)
+    }
+
+    const stopUnreadPolling = () => {
+      if (!unreadPollingTimer) return
+      clearInterval(unreadPollingTimer)
+      unreadPollingTimer = null
     }
     
     const handleMessageClick = async (message) => {
@@ -2892,17 +2927,53 @@ export default {
     const handleOpenRelatedBook = (book) => {
       if (!book) return
       selectedBook.value = book
+      fetchDetailTrend(getBookId(book))
       detailScrollProgress.value = 0
       if (detailScrollRef.value) {
         detailScrollRef.value.scrollTop = 0
       }
     }
 
+    const getBookId = (book) => {
+      if (!book) return null
+      return book.id || book.ID || null
+    }
+
+    const fetchDetailTrend = async (bookID) => {
+      if (!bookID) {
+        detailTrendRemoteData.value = null
+        return
+      }
+      try {
+        const response = await axios.get('/borrow/getBookBorrowTrend', {
+          params: {
+            book_id: bookID,
+            days: 7
+          }
+        })
+        if (response && response.code === 200 && response.data && Array.isArray(response.data.series)) {
+          detailTrendRemoteData.value = response.data
+          return
+        }
+      } catch (error) {
+        console.error('获取图书借阅趋势失败:', error)
+      }
+      detailTrendRemoteData.value = null
+    }
+
     const handleDetailScroll = () => {
       if (!detailScrollRef.value) return
       const el = detailScrollRef.value
       const maxScroll = Math.max(1, el.scrollHeight - el.clientHeight)
-      detailScrollProgress.value = Math.min(1, Math.max(0, el.scrollTop / maxScroll))
+      pendingDetailScrollProgress = Math.min(1, Math.max(0, el.scrollTop / maxScroll))
+      if (detailScrollRafId) return
+      detailScrollRafId = requestAnimationFrame(() => {
+        detailScrollRafId = 0
+        const nextProgress = Number(pendingDetailScrollProgress.toFixed(4))
+        if (Math.abs(nextProgress - detailScrollProgress.value) >= 0.001) {
+          detailScrollProgress.value = nextProgress
+        }
+      })
     }
 
     const syncDetailThemeMode = () => {
@@ -2919,49 +2990,55 @@ export default {
     const detailTrendRevealStyle = computed(() => {
       const reveal = Math.min(1, Math.max(0, (detailScrollProgress.value - 0.06) / 0.28))
       const offsetY = (1 - reveal) * 48
-      const blur = (1 - reveal) * 6
       return {
         opacity: Number(reveal.toFixed(3)),
         transform: `translateY(${Number(offsetY.toFixed(1))}px)`,
-        filter: `blur(${Number(blur.toFixed(1))}px)`,
         pointerEvents: reveal > 0.96 ? 'auto' : 'none'
       }
     })
     const detailExtraRevealStyle = computed(() => {
       const reveal = Math.min(1, Math.max(0, (detailScrollProgress.value - 0.18) / 0.34))
       const offsetY = (1 - reveal) * 56
-      const blur = (1 - reveal) * 7
       return {
         opacity: Number(reveal.toFixed(3)),
         transform: `translateY(${Number(offsetY.toFixed(1))}px)`,
-        filter: `blur(${Number(blur.toFixed(1))}px)`,
         pointerEvents: reveal > 0.96 ? 'auto' : 'none'
       }
     })
     const detailTrendData = computed(() => {
       const book = selectedBook.value || {}
-      const dayCount = 7
-      const available = Number(book.available_stock || 0)
-      const totalStock = Number(book.total_stock || 0)
-      const borrowedNow = Math.max(0, totalStock - available)
-      const explicitBorrow =
-        Number(book.borrow_count || book.borrowed_count || book.borrowCount || book.borrowTimes || 0)
+      const remoteSeries = detailTrendRemoteData.value?.series
+      let values = []
+      let labels = []
 
-      const base = Math.max(1, explicitBorrow || borrowedNow || Math.round(totalStock * 0.55) || 2)
-      const seedText = String(book.id || book.isbn || book.title || 'book')
-      let seed = 0
-      for (let i = 0; i < seedText.length; i += 1) {
-        seed += seedText.charCodeAt(i)
-      }
+      if (Array.isArray(remoteSeries) && remoteSeries.length > 0) {
+        values = remoteSeries.map(item => Number(item.count || 0))
+        labels = remoteSeries.map((item, index) => item.label || `${index + 1}d`)
+      } else {
+        const dayCount = 7
+        const available = Number(book.available_stock || 0)
+        const totalStock = Number(book.total_stock || 0)
+        const borrowedNow = Math.max(0, totalStock - available)
+        const explicitBorrow =
+          Number(book.borrow_count || book.borrowed_count || book.borrowCount || book.borrowTimes || 0)
 
-      const values = Array.from({ length: dayCount }, (_, i) => {
-        const wave = Math.sin((i + (seed % 5)) * 0.9) * 0.2 + Math.cos((i + (seed % 7)) * 0.45) * 0.12
-        const drift = (i - (dayCount - 1) / 2) * 0.035
-        return Math.max(0, Math.round(base * (1 + wave + drift)))
-      })
+        const base = Math.max(1, explicitBorrow || borrowedNow || Math.round(totalStock * 0.55) || 2)
+        const seedText = String(book.id || book.isbn || book.title || 'book')
+        let seed = 0
+        for (let i = 0; i < seedText.length; i += 1) {
+          seed += seedText.charCodeAt(i)
+        }
 
-      if (explicitBorrow > 0) {
-        values[dayCount - 1] = explicitBorrow
+        values = Array.from({ length: dayCount }, (_, i) => {
+          const wave = Math.sin((i + (seed % 5)) * 0.9) * 0.2 + Math.cos((i + (seed % 7)) * 0.45) * 0.12
+          const drift = (i - (dayCount - 1) / 2) * 0.035
+          return Math.max(0, Math.round(base * (1 + wave + drift)))
+        })
+
+        if (explicitBorrow > 0) {
+          values[dayCount - 1] = explicitBorrow
+        }
+        labels = Array.from({ length: dayCount }, (_, i) => `${i + 1}d`)
       }
 
       const maxValue = Math.max(...values, 1)
@@ -2970,8 +3047,8 @@ export default {
       const chartBottom = 160
       const chartLeft = 10
       const chartRight = svgWidth - 10
-      const step = (chartRight - chartLeft) / (dayCount - 1)
-      const labels = Array.from({ length: dayCount }, (_, i) => `${i + 1}d`)
+      const pointCount = Math.max(values.length, 2)
+      const step = (chartRight - chartLeft) / (pointCount - 1)
       const points = values.map((value, i) => {
         const x = Number((chartLeft + i * step).toFixed(2))
         const y = Number((chartBottom - (value / maxValue) * (chartBottom - chartTop)).toFixed(2))
@@ -2982,9 +3059,9 @@ export default {
         .map((point, i) => `${i === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
         .join(' ')
       const areaPath = `${linePath} L ${points[points.length - 1].x} ${chartBottom} L ${points[0].x} ${chartBottom} Z`
-      const total = values.reduce((sum, value) => sum + value, 0)
-      const peak = Math.max(...values)
-      const average = Number((total / dayCount).toFixed(1))
+      const total = Number(detailTrendRemoteData.value?.total ?? values.reduce((sum, value) => sum + value, 0))
+      const peak = Number(detailTrendRemoteData.value?.peak ?? Math.max(...values))
+      const average = Number((total / values.length).toFixed(1))
 
       return {
         labels,
@@ -3001,6 +3078,7 @@ export default {
       // 对话框关闭时，确保滚动功能正常
       bookDetailVisible.value = false
       selectedBook.value = null
+      detailTrendRemoteData.value = null
       
       // 清除所有滚动定时器，确保滚动功能恢复正常
       if (wheelTimer.value) {
@@ -3044,6 +3122,7 @@ export default {
       // 确保状态已更新
       bookDetailVisible.value = false
       selectedBook.value = null
+      detailTrendRemoteData.value = null
       
       // 清除所有滚动定时器
       if (wheelTimer.value) {
@@ -3293,6 +3372,7 @@ export default {
     onMounted(() => {
       fetchCategoryList()
       fetchUnreadCount() // 获取未读消息数量
+      startUnreadPolling()
       syncDetailThemeMode()
       themeClassObserver = new MutationObserver(() => {
         syncDetailThemeMode()
@@ -3339,6 +3419,11 @@ export default {
       if (themeClassObserver) {
         themeClassObserver.disconnect()
         themeClassObserver = null
+      }
+      stopUnreadPolling()
+      if (detailScrollRafId) {
+        cancelAnimationFrame(detailScrollRafId)
+        detailScrollRafId = 0
       }
     })
 
@@ -4183,14 +4268,16 @@ h2.category-title[data-status="reserved"] {
   background: rgba(15, 23, 42, 0.52);
   border-color: rgba(148, 163, 184, 0.24);
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.48);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .detail-scroll-page.detail-theme-dark .detail-trend-card {
   background: rgba(15, 23, 42, 0.52);
   border-color: rgba(148, 163, 184, 0.24);
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.48);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .detail-scroll-page.detail-theme-dark .meta-item,
@@ -4199,6 +4286,13 @@ h2.category-title[data-status="reserved"] {
 .detail-scroll-page.detail-theme-dark .related-book-card {
   background: rgba(15, 23, 42, 0.5);
   border-color: rgba(148, 163, 184, 0.24);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.detail-scroll-page.detail-theme-dark .trend-chart {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .detail-scroll-page.detail-theme-dark .meta-label,
@@ -4283,7 +4377,7 @@ h2.category-title[data-status="reserved"] {
 }
 
 .detail-reveal-block {
-  will-change: opacity, transform, filter;
+  will-change: opacity, transform;
 }
 
 .detail-stage-card {
@@ -4540,6 +4634,12 @@ h2.category-title[data-status="reserved"] {
   stroke-width: 2;
 }
 
+.trend-point-value {
+  fill: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .trend-x-axis {
   margin-top: 6px;
   display: grid;
@@ -4761,6 +4861,11 @@ h2.category-title[data-status="reserved"] {
 :global(.layout-container.theme-dark) .trend-total-label,
 :global(.layout-container.theme-dark) .trend-x-axis {
   color: #cbd5e1;
+}
+
+:global(body.app-theme-dark) .trend-point-value,
+:global(.layout-container.theme-dark) .trend-point-value {
+  fill: #93c5fd;
 }
 
 :global(body.app-theme-dark) .trend-total-value,

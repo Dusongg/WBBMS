@@ -146,6 +146,35 @@ func (b *BlacklistApi) RemoveFromBlacklist(c *gin.Context) {
 	c.JSON(200, response.OkWithMessage("解除黑名单成功"))
 }
 
+// RemoveByUserID 按用户ID解除黑名单（管理员）
+func (b *BlacklistApi) RemoveByUserID(c *gin.Context) {
+	userIDStr := c.Param("userId")
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(200, response.FailWithMessage("参数错误"))
+		return
+	}
+
+	var req struct {
+		Remark string `json:"remark"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	operatorID, _ := c.Get("user_id")
+	var opID uint
+	if operatorID != nil {
+		opID = operatorID.(uint)
+	}
+
+	if err := blacklistService.RemoveActiveBlacklistByUserID(uint(userID), opID, req.Remark); err != nil {
+		global.GVA_LOG.Error("按用户解禁失败", zap.Error(err))
+		c.JSON(200, response.FailWithMessage(err.Error()))
+		return
+	}
+
+	c.JSON(200, response.OkWithMessage("解禁成功"))
+}
+
 // GetMyBlacklistStatus 获取我的黑名单状态
 func (b *BlacklistApi) GetMyBlacklistStatus(c *gin.Context) {
 	// 获取当前用户ID
