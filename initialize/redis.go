@@ -12,16 +12,29 @@ import (
 
 // Redis 初始化Redis连接
 func Redis() *redis.Client {
+	if global.GVA_REDIS != nil {
+		return global.GVA_REDIS
+	}
+
+	if global.GVA_CONFIG == nil {
+		global.GVA_LOG.Error("配置未初始化，无法连接Redis")
+		return nil
+	}
+	if !global.GVA_CONFIG.Redis.Enabled {
+		global.GVA_LOG.Warn("Redis已在配置中禁用")
+		return nil
+	}
+
 	client := redis.NewClient(&redis.Options{
-		Addr:         "127.0.0.1:6379", // Redis地址
-		Password:     "",               // Redis密码
-		DB:           0,                // Redis数据库
-		PoolSize:     100,              // 连接池大小
-		MinIdleConns: 10,               // 最小空闲连接数
-		MaxRetries:   3,                // 最大重试次数
-		DialTimeout:  5 * time.Second,  // 连接超时
-		ReadTimeout:  3 * time.Second,  // 读取超时
-		WriteTimeout: 3 * time.Second,  // 写入超时
+		Addr:         global.GVA_CONFIG.Redis.Addr,
+		Password:     global.GVA_CONFIG.Redis.Password,
+		DB:           global.GVA_CONFIG.Redis.DB,
+		PoolSize:     global.GVA_CONFIG.Redis.PoolSize,
+		MinIdleConns: global.GVA_CONFIG.Redis.MinIdleConns,
+		MaxRetries:   global.GVA_CONFIG.Redis.MaxRetries,
+		DialTimeout:  time.Duration(global.GVA_CONFIG.Redis.DialTimeout) * time.Second,
+		ReadTimeout:  time.Duration(global.GVA_CONFIG.Redis.ReadTimeout) * time.Second,
+		WriteTimeout: time.Duration(global.GVA_CONFIG.Redis.WriteTimeout) * time.Second,
 	})
 
 	// 测试连接
@@ -50,7 +63,8 @@ func InitRedisStreamGroups() {
 
 	// 创建点赞操作Stream的消费者组
 	likeStream := "stream:like:actions"
-	err := global.GVA_REDIS.XGroupCreateMkStream(ctx, likeStream, "sync-group", "0").Err()
+	groupName := global.GVA_CONFIG.Worker.ConsumerGroup
+	err := global.GVA_REDIS.XGroupCreateMkStream(ctx, likeStream, groupName, "0").Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		global.GVA_LOG.Error("创建点赞Stream消费者组失败", zap.Error(err))
 	} else {
@@ -59,10 +73,17 @@ func InitRedisStreamGroups() {
 
 	// 创建收藏操作Stream的消费者组
 	favoriteStream := "stream:favorite:actions"
-	err = global.GVA_REDIS.XGroupCreateMkStream(ctx, favoriteStream, "sync-group", "0").Err()
+	err = global.GVA_REDIS.XGroupCreateMkStream(ctx, favoriteStream, groupName, "0").Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		global.GVA_LOG.Error("创建收藏Stream消费者组失败", zap.Error(err))
 	} else {
 		global.GVA_LOG.Info(fmt.Sprintf("收藏Stream消费者组创建成功: %s", favoriteStream))
+	}
+
+	if global.GVA_CONFIG.Worker.DeadLetterStream != "" {
+		if err := global.GVA_REDIS.XGroupCreateMkStream(ctx, global.GVA_CONFIG.Worker.DeadLetterStream, groupName, "0").Err(); err != nil &&
+			err.Error() != "BUSYGROUP Consumer Group name already exists" {
+			global.GVA_LOG.Warn("创建死信Stream消费者组失败", zap.Error(err))
+		}
 	}
 }

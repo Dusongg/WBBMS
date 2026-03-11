@@ -1,19 +1,21 @@
 <template>
   <div class="statistics">
-    <el-row :gutter="20">
-      <!-- 统计卡片 -->
-      <el-col :span="6" v-for="(stat, index) in statistics" :key="index">
-        <el-card class="stat-card">
-          <div class="stat-content">
-            <div class="stat-value">{{ stat.value }}</div>
-            <div class="stat-label">{{ stat.label }}</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <section class="stats-hero">
+      <p class="hero-kicker">Dashboard</p>
+      <h1 class="hero-title">借阅统计中心</h1>
+      <p class="hero-desc">聚焦借阅动态、热门图书与读者行为，快速查看馆藏运营状态。</p>
+    </section>
 
-    <!-- 热门图书 -->
-    <el-card style="margin-top: 20px;">
+    <div class="stat-grid">
+      <div class="stat-card" v-for="(stat, index) in statistics" :key="index">
+        <div class="stat-content">
+          <div class="stat-value">{{ stat.value }}</div>
+          <div class="stat-label">{{ stat.label }}</div>
+        </div>
+      </div>
+    </div>
+
+    <el-card class="panel-card">
       <template #header>
         <div class="card-header">
           <span>热门图书（借阅次数最多）</span>
@@ -22,7 +24,7 @@
 
       <el-table
         :data="popularBooks"
-        style="width: 100%;"
+        class="stats-table"
         v-loading="loading"
         border
       >
@@ -33,12 +35,11 @@
       </el-table>
     </el-card>
 
-    <!-- 借阅统计 -->
-    <el-card style="margin-top: 20px;">
+    <el-card class="panel-card">
       <template #header>
         <div class="card-header">
-          <span>借阅统计</span>
-          <div>
+          <span>借阅记录统计</span>
+          <div class="toolbar">
             <el-date-picker
               v-model="dateRange"
               type="daterange"
@@ -46,9 +47,9 @@
               start-placeholder="开始日期"
               end-placeholder="结束日期"
               @change="handleDateChange"
-              style="width: 300px;"
+              class="date-picker"
             />
-            <el-button type="primary" @click="fetchBorrowStatistics" style="margin-left: 10px;">
+            <el-button type="primary" @click="fetchBorrowStatistics">
               查询
             </el-button>
           </div>
@@ -57,7 +58,7 @@
 
       <el-table
         :data="borrowStatistics"
-        style="width: 100%;"
+        class="stats-table"
         v-loading="statisticsLoading"
         border
       >
@@ -104,6 +105,16 @@ export default {
       if (!dateStr) return '-'
       const date = new Date(dateStr)
       return date.toLocaleDateString('zh-CN')
+    }
+
+    const formatDateParam = (dateInput) => {
+      if (!dateInput) return ''
+      const date = new Date(dateInput)
+      if (Number.isNaN(date.getTime())) return ''
+      const y = date.getFullYear()
+      const m = String(date.getMonth() + 1).padStart(2, '0')
+      const d = String(date.getDate()).padStart(2, '0')
+      return `${y}-${m}-${d}`
     }
 
     const getStatusType = (status) => {
@@ -171,8 +182,8 @@ export default {
       try {
         const params = {}
         if (dateRange.value && dateRange.value.length === 2) {
-          params.start_date = formatDate(dateRange.value[0])
-          params.end_date = formatDate(dateRange.value[1])
+          params.start_date = formatDateParam(dateRange.value[0])
+          params.end_date = formatDateParam(dateRange.value[1])
         }
 
         const response = await axios.get('/statistics/getBorrowStatistics', { params })
@@ -221,11 +232,70 @@ export default {
 
 <style scoped>
 .statistics {
-  padding: 20px;
+  padding: 18px;
+  position: relative;
+}
+
+.statistics::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(59, 130, 246, 0.12), transparent 45%),
+    radial-gradient(circle at 100% 100%, rgba(14, 165, 233, 0.14), transparent 43%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.55), rgba(239, 246, 255, 0.4));
+}
+
+.statistics > * {
+  position: relative;
+  z-index: 1;
+}
+
+.stats-hero {
+  margin-bottom: 18px;
+}
+
+.hero-kicker {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.hero-title {
+  margin: 6px 0 4px;
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.hero-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
 }
 
 .stat-card {
-  margin-bottom: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.52);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.1),
+    0 18px 36px rgba(15, 23, 42, 0.08);
+  padding: 14px 12px;
 }
 
 .stat-content {
@@ -234,20 +304,101 @@ export default {
 
 .stat-value {
   font-size: 32px;
-  font-weight: bold;
-  color: #409EFF;
-  margin-bottom: 10px;
+  font-weight: 800;
+  color: #1d4ed8;
+  margin-bottom: 6px;
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #666;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.panel-card {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.54);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    0 12px 28px rgba(15, 23, 42, 0.1),
+    0 22px 42px rgba(15, 23, 42, 0.08);
+  margin-bottom: 16px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.date-picker {
+  width: 300px;
+}
+
+.stats-table {
+  width: 100%;
+}
+
+.stats-table :deep(.el-table__header-wrapper th),
+.stats-table :deep(.el-table__body-wrapper td) {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.stats-table :deep(.el-table__row:hover > td) {
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+
+:global(body.app-theme-dark) .hero-title,
+:global(.layout-container.theme-dark) .hero-title {
+  color: #f8fafc;
+}
+
+:global(body.app-theme-dark) .hero-kicker,
+:global(body.app-theme-dark) .hero-desc,
+:global(.layout-container.theme-dark) .hero-kicker,
+:global(.layout-container.theme-dark) .hero-desc {
+  color: #cbd5e1;
+}
+
+:global(body.app-theme-dark) .stat-card,
+:global(body.app-theme-dark) .panel-card,
+:global(.layout-container.theme-dark) .stat-card,
+:global(.layout-container.theme-dark) .panel-card {
+  background: rgba(15, 23, 42, 0.52);
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.48);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:global(body.app-theme-dark) .stat-value,
+:global(.layout-container.theme-dark) .stat-value {
+  color: #93c5fd;
+}
+
+:global(body.app-theme-dark) .stat-label,
+:global(body.app-theme-dark) .card-header,
+:global(.layout-container.theme-dark) .stat-label,
+:global(.layout-container.theme-dark) .card-header {
+  color: #e2e8f0;
+}
+
+:global(body.app-theme-dark) .stats-table .el-table__header-wrapper th,
+:global(body.app-theme-dark) .stats-table .el-table__body-wrapper td,
+:global(.layout-container.theme-dark) .stats-table .el-table__header-wrapper th,
+:global(.layout-container.theme-dark) .stats-table .el-table__body-wrapper td {
+  background: rgba(15, 23, 42, 0.52);
+  color: #e2e8f0;
 }
 </style>
 

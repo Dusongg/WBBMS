@@ -92,13 +92,24 @@ func GormMysql() *gorm.DB {
 		return m
 	}
 
+	cfg := global.GVA_CONFIG
+	if cfg == nil {
+		global.GVA_LOG.Error("配置未初始化，无法连接MySQL")
+		return nil
+	}
+
 	dsn := fmt.Sprintf("%s:%s@tcp(%s)/%s?%s",
-		"root",
-		"root",
-		"127.0.0.1:3306",
-		"bookadmin",
-		"charset=utf8mb4&parseTime=True&loc=Local",
+		cfg.MySQL.Username,
+		cfg.MySQL.Password,
+		cfg.MySQL.Path,
+		cfg.MySQL.DBName,
+		cfg.MySQL.Config,
 	)
+
+	logMode := logger.Silent
+	if cfg.MySQL.LogMode {
+		logMode = logger.Info
+	}
 
 	mysqlConfig := mysql.Config{
 		DSN:                       dsn,
@@ -110,14 +121,14 @@ func GormMysql() *gorm.DB {
 	}
 
 	if db, err := gorm.Open(mysql.New(mysqlConfig), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logMode),
 	}); err != nil {
 		global.GVA_LOG.Error("MySQL启动异常", zap.Error(err))
 		return nil
 	} else {
 		sqlDB, _ := db.DB()
-		sqlDB.SetMaxIdleConns(10)
-		sqlDB.SetMaxOpenConns(100)
+		sqlDB.SetMaxIdleConns(cfg.MySQL.MaxIdleConns)
+		sqlDB.SetMaxOpenConns(cfg.MySQL.MaxOpenConns)
 		global.GVA_DB = db
 		return db
 	}

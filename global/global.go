@@ -1,6 +1,7 @@
 package global
 
 import (
+	"bookadmin/config"
 	"bookadmin/model"
 
 	"github.com/redis/go-redis/v9"
@@ -9,8 +10,9 @@ import (
 )
 
 var (
-	GVA_DB    *gorm.DB
-	GVA_LOG   *zap.Logger
-	GVA_REDIS *redis.Client // Redis客户端
-	BookModel model.Book
+	GVA_DB     *gorm.DB
+	GVA_LOG    *zap.Logger
+	GVA_REDIS  *redis.Client
+	GVA_CONFIG *config.Config
+	BookModel  model.Book
 )

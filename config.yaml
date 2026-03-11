@@ -1,5 +1,13 @@
+app:
+  name: bookadmin
+  env: development
+
 server:
+  host: 0.0.0.0
   port: 8888
+  read-timeout-seconds: 10
+  write-timeout-seconds: 10
+  shutdown-timeout-seconds: 10
 
 mysql:
   path: 127.0.0.1:3306
@@ -11,15 +19,57 @@ mysql:
   max-open-conns: 100
   log-mode: true
 
-# Redis配置 - 用于点赞/收藏/榜单系统
 redis:
-  addr: 127.0.0.1:6379      # Redis地址
-  password: ""               # Redis密码（空表示无密码）
-  db: 0                      # Redis数据库索引
-  pool-size: 100             # 连接池大小
-  min-idle-conns: 10         # 最小空闲连接数
-  max-retries: 3             # 最大重试次数
-  dial-timeout: 5            # 连接超时（秒）
-  read-timeout: 3            # 读取超时（秒）
-  write-timeout: 3           # 写入超时（秒）
+  enabled: true
+  addr: 127.0.0.1:6379
+  password: ""
+  db: 0
+  pool-size: 100
+  min-idle-conns: 10
+  max-retries: 3
+  dial-timeout: 5
+  read-timeout: 3
+  write-timeout: 3
+
+jwt:
+  secret: bookadmin-secret-key-change-in-production
+  expire-hours: 24
+  issuer: bookadmin
+
+log:
+  level: info
+  file: ./log/app.log
+  max-size: 10
+  max-backups: 5
+  max-age: 30
+  compress: false
+
+worker:
+  enabled: true
+  pool-size: 5
+  consumer-group: sync-group
+  batch-size: 100
+  batch-timeout-seconds: 5
+  block-timeout-seconds: 1
+  reclaim-interval-seconds: 15
+  min-idle-seconds: 30
+  max-retry: 5
+  dead-letter-stream: stream:dead-letter:sync
+  consumer-prefix: worker
+
+cron:
+  enabled: true
+  use-distributed-lock: true
+  lock-ttl-seconds: 600
+
+metrics:
+  enabled: true
+
+migration:
+  auto-migrate: true
+
+security:
+  cors-allowed-origins:
+    - http://localhost:8080
+  seed-default-users: true
 

@@ -6,7 +6,7 @@ import router from './router'
 import axios from 'axios'
 
 // 配置axios
-axios.defaults.baseURL = 'http://localhost:8888/api'
+axios.defaults.baseURL = process.env.VUE_APP_API_BASE_URL || '/api'
 axios.defaults.timeout = 10000
 
 // 请求拦截器

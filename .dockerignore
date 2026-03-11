@@ -1,0 +1,10 @@
+.git
+.gitignore
+.cursor
+.gomodcache
+.gocache
+node_modules
+web/node_modules
+web/dist
+log
+*.log

@@ -693,7 +693,23 @@
             <div class="trend-header">
               <div class="trend-title-wrap">
                 <div class="trend-title">借阅趋势</div>
-                <div class="trend-subtitle">近 7 天借阅次数（次）</div>
+                <div class="trend-subtitle">近 {{ detailTrendRange }} 天借阅次数（次）</div>
+                <div class="trend-range-switch">
+                  <button
+                    class="trend-range-btn"
+                    :class="{ active: detailTrendRange === 7 }"
+                    @click="handleTrendRangeChange(7)"
+                  >
+                    7d
+                  </button>
+                  <button
+                    class="trend-range-btn"
+                    :class="{ active: detailTrendRange === 30 }"
+                    @click="handleTrendRangeChange(30)"
+                  >
+                    30d
+                  </button>
+                </div>
               </div>
               <div class="trend-total">
                 <span class="trend-total-label">总计</span>
@@ -730,8 +746,11 @@
                   class="trend-point"
                 />
               </svg>
-              <div class="trend-x-axis">
-                <span v-for="label in detailTrendData.labels" :key="label">{{ label }}</span>
+              <div
+                class="trend-x-axis"
+                :style="{ gridTemplateColumns: `repeat(${detailTrendData.axisColumns}, minmax(0, 1fr))` }"
+              >
+                <span v-for="(label, index) in detailTrendData.axisLabels" :key="`axis-${index}`">{{ label }}</span>
               </div>
             </div>
             <div class="trend-footer">
@@ -976,6 +995,7 @@ export default {
     const bookDetailVisible = ref(false)
     const selectedBook = ref(null)
     const detailTrendRemoteData = ref(null)
+    const detailTrendRange = ref(7)
     const detailScrollRef = ref(null)
     const detailScrollProgress = ref(0)
     let detailScrollRafId = 0
@@ -2939,7 +2959,7 @@ export default {
       return book.id || book.ID || null
     }
 
-    const fetchDetailTrend = async (bookID) => {
+    const fetchDetailTrend = async (bookID, days = detailTrendRange.value) => {
       if (!bookID) {
         detailTrendRemoteData.value = null
         return
@@ -2948,7 +2968,7 @@ export default {
         const response = await axios.get('/borrow/getBookBorrowTrend', {
           params: {
             book_id: bookID,
-            days: 7
+            days
           }
         })
         if (response && response.code === 200 && response.data && Array.isArray(response.data.series)) {
@@ -2959,6 +2979,15 @@ export default {
         console.error('获取图书借阅趋势失败:', error)
       }
       detailTrendRemoteData.value = null
+    }
+
+    const handleTrendRangeChange = async (days) => {
+      if (detailTrendRange.value === days) return
+      detailTrendRange.value = days
+      const bookID = getBookId(selectedBook.value)
+      if (bookID) {
+        await fetchDetailTrend(bookID, days)
+      }
     }
 
     const handleDetailScroll = () => {
@@ -3010,12 +3039,21 @@ export default {
       const remoteSeries = detailTrendRemoteData.value?.series
       let values = []
       let labels = []
+      let axisLabels = []
 
       if (Array.isArray(remoteSeries) && remoteSeries.length > 0) {
         values = remoteSeries.map(item => Number(item.count || 0))
-        labels = remoteSeries.map((item, index) => item.label || `${index + 1}d`)
+        labels = remoteSeries.map((item) => {
+          if (!item.date) return ''
+          const dateStr = String(item.date)
+          const parts = dateStr.split('-')
+          if (parts.length === 3) {
+            return `${parts[1]}-${parts[2]}`
+          }
+          return dateStr
+        })
       } else {
-        const dayCount = 7
+        const dayCount = detailTrendRange.value
         const available = Number(book.available_stock || 0)
         const totalStock = Number(book.total_stock || 0)
         const borrowedNow = Math.max(0, totalStock - available)
@@ -3038,7 +3076,26 @@ export default {
         if (explicitBorrow > 0) {
           values[dayCount - 1] = explicitBorrow
         }
-        labels = Array.from({ length: dayCount }, (_, i) => `${i + 1}d`)
+        const now = new Date()
+        labels = Array.from({ length: dayCount }, (_, i) => {
+          const d = new Date(now)
+          d.setDate(now.getDate() - (dayCount - 1 - i))
+          const mm = String(d.getMonth() + 1).padStart(2, '0')
+          const dd = String(d.getDate()).padStart(2, '0')
+          return `${mm}-${dd}`
+        })
+      }
+
+      if (labels.length <= 10) {
+        axisLabels = labels
+      } else {
+        const step = Math.ceil(labels.length / 6)
+        axisLabels = labels.map((label, index) => {
+          if (index === 0 || index === labels.length - 1 || index % step === 0) {
+            return label
+          }
+          return ''
+        })
       }
 
       const maxValue = Math.max(...values, 1)
@@ -3065,6 +3122,8 @@ export default {
 
       return {
         labels,
+        axisLabels,
+        axisColumns: Math.max(axisLabels.length, 1),
         points,
         linePath,
         areaPath,
@@ -3464,6 +3523,8 @@ export default {
       detailTiltTransform,
       detailTrendRevealStyle,
       detailExtraRevealStyle,
+      detailTrendRange,
+      handleTrendRangeChange,
       detailTrendData,
       dialogVisible,
       dialogTitle,
@@ -4295,6 +4356,20 @@ h2.category-title[data-status="reserved"] {
   -webkit-backdrop-filter: none;
 }
 
+.detail-scroll-page.detail-theme-dark .trend-title,
+.detail-scroll-page.detail-theme-dark .trend-subtitle,
+.detail-scroll-page.detail-theme-dark .trend-total-label,
+.detail-scroll-page.detail-theme-dark .trend-total-value,
+.detail-scroll-page.detail-theme-dark .trend-footer,
+.detail-scroll-page.detail-theme-dark .trend-footer span,
+.detail-scroll-page.detail-theme-dark .trend-x-axis {
+  color: #f8fafc;
+}
+
+.detail-scroll-page.detail-theme-dark .trend-point-value {
+  fill: #f8fafc;
+}
+
 .detail-scroll-page.detail-theme-dark .meta-label,
 .detail-scroll-page.detail-theme-dark .section-label,
 .detail-scroll-page.detail-theme-dark .extra-card-title,
@@ -4585,6 +4660,36 @@ h2.category-title[data-status="reserved"] {
   color: #64748b;
 }
 
+.trend-range-switch {
+  margin-top: 8px;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.trend-range-btn {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.62);
+  color: #334155;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.trend-range-btn:hover {
+  border-color: rgba(59, 130, 246, 0.45);
+  color: #1d4ed8;
+}
+
+.trend-range-btn.active {
+  border-color: rgba(37, 99, 235, 0.5);
+  background: rgba(59, 130, 246, 0.16);
+  color: #1d4ed8;
+}
+
 .trend-total {
   text-align: right;
 }
@@ -4860,17 +4965,31 @@ h2.category-title[data-status="reserved"] {
 :global(.layout-container.theme-dark) .trend-subtitle,
 :global(.layout-container.theme-dark) .trend-total-label,
 :global(.layout-container.theme-dark) .trend-x-axis {
-  color: #cbd5e1;
+  color: #f8fafc;
 }
 
 :global(body.app-theme-dark) .trend-point-value,
 :global(.layout-container.theme-dark) .trend-point-value {
-  fill: #93c5fd;
+  fill: #f8fafc;
+}
+
+:global(body.app-theme-dark) .trend-range-btn,
+:global(.layout-container.theme-dark) .trend-range-btn {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #e2e8f0;
+}
+
+:global(body.app-theme-dark) .trend-range-btn.active,
+:global(.layout-container.theme-dark) .trend-range-btn.active {
+  background: rgba(59, 130, 246, 0.28);
+  border-color: rgba(96, 165, 250, 0.55);
+  color: #f8fafc;
 }
 
 :global(body.app-theme-dark) .trend-total-value,
 :global(.layout-container.theme-dark) .trend-total-value {
-  color: #93c5fd;
+  color: #f8fafc;
 }
 
 :global(body.app-theme-dark) .trend-chart,
@@ -4885,7 +5004,7 @@ h2.category-title[data-status="reserved"] {
 
 :global(body.app-theme-dark) .trend-footer,
 :global(.layout-container.theme-dark) .trend-footer {
-  color: #cbd5e1;
+  color: #f8fafc;
 }
 
 @media (max-width: 768px) {

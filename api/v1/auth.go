@@ -34,10 +34,16 @@ func (a *AuthApi) Login(c *gin.Context) {
 		return
 	}
 
-	// 验证密码（简化处理，实际应使用bcrypt）
-	if user.Password != req.Password {
+	if !utils.CheckPassword(user.Password, req.Password) {
 		c.JSON(200, response.FailWithMessage("用户名或密码错误"))
 		return
+	}
+
+	if user.Password == req.Password {
+		if hashedPassword, err := utils.HashPassword(req.Password); err == nil {
+			global.GVA_DB.Model(&user).Update("password", hashedPassword)
+			user.Password = hashedPassword
+		}
 	}
 
 	// 检查用户状态
@@ -55,10 +61,10 @@ func (a *AuthApi) Login(c *gin.Context) {
 	}
 
 	c.JSON(200, response.OkWithData(gin.H{
-		"token":    token,
-		"user_id":  user.ID,
-		"username": user.Username,
-		"role":     user.Role,
+		"token":     token,
+		"user_id":   user.ID,
+		"username":  user.Username,
+		"role":      user.Role,
 		"real_name": user.RealName,
 	}))
 }
@@ -91,13 +97,20 @@ func (a *AuthApi) Register(c *gin.Context) {
 	// 创建用户
 	user := model.User{
 		Username: req.Username,
-		Password: req.Password, // 简化处理，实际应加密
 		Email:    req.Email,
 		Phone:    req.Phone,
 		Role:     model.RoleReader,
 		Status:   "active",
 		RealName: req.RealName,
 	}
+
+	hashedPassword, err := utils.HashPassword(req.Password)
+	if err != nil {
+		global.GVA_LOG.Error("密码加密失败", zap.Error(err))
+		c.JSON(200, response.FailWithMessage("注册失败"))
+		return
+	}
+	user.Password = hashedPassword
 
 	if err := global.GVA_DB.Create(&user).Error; err != nil {
 		global.GVA_LOG.Error("创建用户失败", zap.Error(err))
@@ -147,4 +160,3 @@ func (a *AuthApi) GetUserInfo(c *gin.Context) {
 
 	c.JSON(200, response.OkWithData(user))
 }
-

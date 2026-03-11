@@ -1,73 +1,173 @@
 package main
 
 import (
+	appconfig "bookadmin/config"
+	"bookadmin/global"
 	"bookadmin/initialize"
 	"bookadmin/router"
 	"bookadmin/worker"
+	"context"
+	"errors"
+	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 )
 
 func main() {
-	// 初始化日志
-	initialize.Zap()
+	mode := flag.String("mode", "all", "运行模式: api|worker|scheduler|all|migrate")
+	flag.Parse()
+
+	if _, err := initialize.Config(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	logger := initialize.Zap()
+	defer func() {
+		_ = logger.Sync()
+	}()
+
+	zap.L().Info("应用启动", zap.String("mode", *mode))
 
 	// 初始化数据库
 	if initialize.GormMysql() == nil {
 		zap.L().Error("数据库连接失败")
+		os.Exit(1)
+	}
+
+	if mustRunMigrations(*mode) {
+		initialize.Gorm()
+	}
+
+	if shouldSeedData(*mode) {
+		initialize.InitData()
+	}
+
+	if *mode == "migrate" {
+		zap.L().Info("数据库迁移完成")
 		return
 	}
 
-	// 初始化表结构
-	initialize.Gorm()
-
-	// 初始化配置缓存
 	initialize.InitConfigCache()
 
-	// 初始化Redis
+	redisReady := false
 	var workerPool *worker.WorkerPool
 	if initialize.Redis() == nil {
 		zap.L().Warn("Redis连接失败，点赞/收藏功能将受限")
 	} else {
-		// 初始化Redis Stream消费者组
+		redisReady = true
 		initialize.InitRedisStreamGroups()
-
-		// 启动异步Worker池（5个Worker）
-		workerPool = worker.NewWorkerPool(5)
-		workerPool.Start()
 	}
 
-	// 初始化默认数据
-	initialize.InitData()
+	if requiresRedis(*mode) && !redisReady {
+		zap.L().Error("当前模式依赖Redis，但Redis不可用", zap.String("mode", *mode))
+		os.Exit(1)
+	}
 
-	// 初始化定时任务
-	initialize.InitCronJobs()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	// 初始化路由
-	Router := router.InitRouter()
+	var server *http.Server
+	serverErrors := make(chan error, 1)
 
-	// 优雅关闭
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	switch *mode {
+	case "api":
+		server = startAPIServer(serverErrors)
+	case "worker":
+		workerPool = startWorkerPool()
+	case "scheduler":
+		startScheduler()
+	case "all":
+		server = startAPIServer(serverErrors)
+		workerPool = startWorkerPool()
+		startScheduler()
+	default:
+		zap.L().Error("未知运行模式", zap.String("mode", *mode))
+		os.Exit(1)
+	}
+
+	select {
+	case <-ctx.Done():
+		zap.L().Info("收到关闭信号，开始优雅停机")
+	case err := <-serverErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			zap.L().Error("服务器启动失败", zap.Error(err))
+		}
+	}
+
+	if workerPool != nil {
+		workerPool.Stop()
+	}
+	initialize.StopCronJobs()
+
+	if server != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(appConfig().Server.ShutdownTimeoutSeconds)*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			zap.L().Error("HTTP服务优雅停机失败", zap.Error(err))
+		}
+	}
+}
+
+func mustRunMigrations(mode string) bool {
+	return mode == "migrate" || appConfig().Migration.AutoMigrate
+}
+
+func shouldSeedData(mode string) bool {
+	if !appConfig().Security.SeedDefaultUsers {
+		return false
+	}
+	return mode == "migrate" || mode == "all" || mode == "api"
+}
+
+func requiresRedis(mode string) bool {
+	return mode == "worker"
+}
+
+func startAPIServer(serverErrors chan<- error) *http.Server {
+	cfg := appConfig()
+	httpServer := &http.Server{
+		Addr:         cfg.ServerAddress(),
+		Handler:      router.InitRouter(),
+		ReadTimeout:  time.Duration(cfg.Server.ReadTimeoutSeconds) * time.Second,
+		WriteTimeout: time.Duration(cfg.Server.WriteTimeoutSeconds) * time.Second,
+	}
 
 	go func() {
-		<-quit
-		zap.L().Info("收到关闭信号，正在优雅关闭...")
-		if workerPool != nil {
-			workerPool.Stop()
-		}
-		initialize.StopCronJobs()
-		os.Exit(0)
+		zap.L().Info("HTTP服务启动", zap.String("addr", cfg.ServerAddress()))
+		serverErrors <- httpServer.ListenAndServe()
 	}()
 
-	// 启动服务器
-	port := 8888
-	zap.L().Info(fmt.Sprintf("服务器启动在端口: %d", port))
-	if err := Router.Run(fmt.Sprintf(":%d", port)); err != nil {
-		zap.L().Error("服务器启动失败", zap.Error(err))
+	return httpServer
+}
+
+func startWorkerPool() *worker.WorkerPool {
+	if !appConfig().Worker.Enabled {
+		zap.L().Warn("Worker已在配置中禁用")
+		return nil
 	}
+
+	workerPool := worker.NewWorkerPool(appConfig().Worker.PoolSize)
+	workerPool.Start()
+	return workerPool
+}
+
+func startScheduler() {
+	if !appConfig().Cron.Enabled {
+		zap.L().Warn("定时任务调度器已在配置中禁用")
+		return
+	}
+
+	initialize.InitCronJobs()
+}
+
+func appConfig() *appconfig.Config {
+	return global.GVA_CONFIG
 }

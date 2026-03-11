@@ -3,18 +3,36 @@ package initialize
 import (
 	"bookadmin/global"
 	"bookadmin/model"
+	"bookadmin/utils"
 
 	"go.uber.org/zap"
 )
 
 // InitData 初始化默认数据
 func InitData() {
+	if global.GVA_CONFIG != nil && !global.GVA_CONFIG.Security.SeedDefaultUsers {
+		global.GVA_LOG.Info("已禁用默认用户初始化")
+		return
+	}
+
+	adminPassword, err := utils.HashPassword("admin123")
+	if err != nil {
+		global.GVA_LOG.Error("生成默认管理员密码失败", zap.Error(err))
+		return
+	}
+
+	librarianPassword, err := utils.HashPassword("librarian123")
+	if err != nil {
+		global.GVA_LOG.Error("生成默认馆员密码失败", zap.Error(err))
+		return
+	}
+
 	// 创建默认管理员账户
 	var adminUser model.User
 	if err := global.GVA_DB.Where("username = ?", "admin").First(&adminUser).Error; err != nil {
 		adminUser = model.User{
 			Username: "admin",
-			Password: "admin123", // 简化处理，实际应加密
+			Password: adminPassword,
 			Email:    "admin@bookadmin.com",
 			Role:     model.RoleAdmin,
 			Status:   "active",
@@ -32,7 +50,7 @@ func InitData() {
 	if err := global.GVA_DB.Where("username = ?", "librarian").First(&librarianUser).Error; err != nil {
 		librarianUser = model.User{
 			Username: "librarian",
-			Password: "librarian123",
+			Password: librarianPassword,
 			Email:    "librarian@bookadmin.com",
 			Role:     model.RoleLibrarian,
 			Status:   "active",

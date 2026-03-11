@@ -1,26 +1,79 @@
 package router
 
 import (
+	"bookadmin/global"
+	"bookadmin/middleware"
+	"bookadmin/observability"
+	"context"
+	"net/http"
+	"time"
+
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func InitRouter() *gin.Engine {
-	Router := gin.Default()
+	if global.GVA_CONFIG != nil && global.GVA_CONFIG.IsProduction() {
+		gin.SetMode(gin.ReleaseMode)
+	}
 
-	// 跨域配置
-	Router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+	Router := gin.New()
+	Router.Use(gin.Recovery())
+	Router.Use(middleware.RequestContext())
+	Router.Use(middleware.CORS())
 
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
+	Router.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "ok",
+			"time":   time.Now().Format(time.RFC3339),
+		})
+	})
+
+	Router.GET("/readyz", func(c *gin.Context) {
+		ready := global.GVA_DB != nil
+		if global.GVA_DB != nil {
+			if sqlDB, err := global.GVA_DB.DB(); err == nil {
+				if err := sqlDB.PingContext(c.Request.Context()); err != nil {
+					ready = false
+				}
+				stats := sqlDB.Stats()
+				observability.SetDBStats(stats.OpenConnections, stats.Idle, stats.InUse)
+			} else {
+				ready = false
+			}
 		}
 
-		c.Next()
+		if global.GVA_CONFIG != nil && global.GVA_CONFIG.Redis.Enabled && global.GVA_REDIS == nil {
+			ready = false
+		}
+
+		if ready && global.GVA_REDIS != nil {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+			defer cancel()
+
+			start := time.Now()
+			if err := global.GVA_REDIS.Ping(ctx).Err(); err != nil {
+				ready = false
+			} else {
+				observability.SetRedisPing(time.Since(start))
+			}
+		}
+
+		statusCode := http.StatusOK
+		status := "ready"
+		if !ready {
+			statusCode = http.StatusServiceUnavailable
+			status = "not_ready"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"status": status,
+		})
 	})
+
+	if global.GVA_CONFIG == nil || global.GVA_CONFIG.Metrics.Enabled {
+		Router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	}
 
 	// API路由组
 	apiRouter := Router.Group("api")
