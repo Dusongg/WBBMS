@@ -727,25 +727,36 @@
                 <line x1="10" y1="160" x2="610" y2="160" class="trend-baseline" />
                 <path :d="detailTrendData.areaPath" fill="url(#detail-trend-fill)" />
                 <path :d="detailTrendData.linePath" class="trend-line" />
-                <text
-                  v-for="point in detailTrendData.points"
-                  :key="`point-value-${point.label}`"
-                  :x="Math.min(Math.max(point.x, 20), 600)"
-                  :y="Math.max(point.y - 10, 18)"
-                  class="trend-point-value"
-                  text-anchor="middle"
-                >
-                  {{ point.value }}
-                </text>
-                <circle
+                <g
                   v-for="point in detailTrendData.points"
                   :key="point.label"
-                  :cx="point.x"
-                  :cy="point.y"
-                  r="4.5"
-                  class="trend-point"
-                />
+                  class="trend-point-g"
+                  @mouseenter="(e) => showTrendPointTooltip(point, e)"
+                  @mouseleave="hideTrendPointTooltip"
+                >
+                  <circle :cx="point.x" :cy="point.y" r="14" fill="transparent">
+                    <title>{{ point.label }}：{{ point.value }} 次</title>
+                  </circle>
+                  <circle :cx="point.x" :cy="point.y" r="4.5" class="trend-point">
+                    <title>{{ point.label }}：{{ point.value }} 次</title>
+                  </circle>
+                </g>
               </svg>
+              <Teleport to="body">
+                <Transition name="trend-tooltip-fade">
+                  <div
+                    v-if="trendPointTooltip"
+                    class="trend-point-tooltip"
+                    :style="{
+                      left: `${trendPointTooltip.x}px`,
+                      top: `${trendPointTooltip.y - 36}px`,
+                      transform: 'translate(-50%, 0)'
+                    }"
+                  >
+                    {{ trendPointTooltip.label }}：{{ trendPointTooltip.value }} 次
+                  </div>
+                </Transition>
+              </Teleport>
               <div
                 class="trend-x-axis"
                 :style="{ gridTemplateColumns: `repeat(${detailTrendData.axisColumns}, minmax(0, 1fr))` }"
@@ -996,6 +1007,7 @@ export default {
     const selectedBook = ref(null)
     const detailTrendRemoteData = ref(null)
     const detailTrendRange = ref(7)
+    const trendPointTooltip = ref(null)
     const detailScrollRef = ref(null)
     const detailScrollProgress = ref(0)
     let detailScrollRafId = 0
@@ -2981,6 +2993,22 @@ export default {
       detailTrendRemoteData.value = null
     }
 
+    const showTrendPointTooltip = (point, e) => {
+      const el = e?.currentTarget
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const centerX = rect.left + rect.width / 2
+      const centerY = rect.top + rect.height / 2
+      trendPointTooltip.value = {
+        label: point.label,
+        value: point.value,
+        x: centerX,
+        y: centerY
+      }
+    }
+    const hideTrendPointTooltip = () => {
+      trendPointTooltip.value = null
+    }
     const handleTrendRangeChange = async (days) => {
       if (detailTrendRange.value === days) return
       detailTrendRange.value = days
@@ -3022,7 +3050,7 @@ export default {
       return {
         opacity: Number(reveal.toFixed(3)),
         transform: `translateY(${Number(offsetY.toFixed(1))}px)`,
-        pointerEvents: reveal > 0.96 ? 'auto' : 'none'
+        pointerEvents: reveal > 0.01 ? 'auto' : 'none'
       }
     })
     const detailExtraRevealStyle = computed(() => {
@@ -3138,6 +3166,7 @@ export default {
       bookDetailVisible.value = false
       selectedBook.value = null
       detailTrendRemoteData.value = null
+      trendPointTooltip.value = null
       
       // 清除所有滚动定时器，确保滚动功能恢复正常
       if (wheelTimer.value) {
@@ -3182,6 +3211,7 @@ export default {
       bookDetailVisible.value = false
       selectedBook.value = null
       detailTrendRemoteData.value = null
+      trendPointTooltip.value = null
       
       // 清除所有滚动定时器
       if (wheelTimer.value) {
@@ -3526,6 +3556,9 @@ export default {
       detailTrendRange,
       handleTrendRangeChange,
       detailTrendData,
+      trendPointTooltip,
+      showTrendPointTooltip,
+      hideTrendPointTooltip,
       dialogVisible,
       dialogTitle,
       form,
@@ -4366,10 +4399,6 @@ h2.category-title[data-status="reserved"] {
   color: #f8fafc;
 }
 
-.detail-scroll-page.detail-theme-dark .trend-point-value {
-  fill: #f8fafc;
-}
-
 .detail-scroll-page.detail-theme-dark .meta-label,
 .detail-scroll-page.detail-theme-dark .section-label,
 .detail-scroll-page.detail-theme-dark .extra-card-title,
@@ -4733,16 +4762,37 @@ h2.category-title[data-status="reserved"] {
   stroke-linejoin: round;
 }
 
+.trend-point-g {
+  cursor: pointer;
+}
+
 .trend-point {
   fill: #ffffff;
   stroke: #3b82f6;
   stroke-width: 2;
 }
 
-.trend-point-value {
-  fill: #1d4ed8;
+.trend-point-tooltip {
+  position: fixed;
+  z-index: 99999;
+  padding: 6px 10px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.95);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.trend-tooltip-fade-enter-active,
+.trend-tooltip-fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.trend-tooltip-fade-enter-from,
+.trend-tooltip-fade-leave-to {
+  opacity: 0;
 }
 
 .trend-x-axis {
@@ -4966,11 +5016,6 @@ h2.category-title[data-status="reserved"] {
 :global(.layout-container.theme-dark) .trend-total-label,
 :global(.layout-container.theme-dark) .trend-x-axis {
   color: #f8fafc;
-}
-
-:global(body.app-theme-dark) .trend-point-value,
-:global(.layout-container.theme-dark) .trend-point-value {
-  fill: #f8fafc;
 }
 
 :global(body.app-theme-dark) .trend-range-btn,

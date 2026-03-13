@@ -6,11 +6,25 @@ import (
 	"bookadmin/observability"
 	"context"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+var instanceID = initInstanceID()
+
+func initInstanceID() string {
+	if id := os.Getenv("APP_INSTANCE_ID"); id != "" {
+		return id
+	}
+	hostname, _ := os.Hostname()
+	if hostname != "" {
+		return hostname
+	}
+	return "default"
+}
 
 func InitRouter() *gin.Engine {
 	if global.GVA_CONFIG != nil && global.GVA_CONFIG.IsProduction() {
@@ -19,13 +33,18 @@ func InitRouter() *gin.Engine {
 
 	Router := gin.New()
 	Router.Use(gin.Recovery())
+	Router.Use(func(c *gin.Context) {
+		c.Header("X-Instance-ID", instanceID)
+		c.Next()
+	})
 	Router.Use(middleware.RequestContext())
 	Router.Use(middleware.CORS())
 
 	Router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
-			"time":   time.Now().Format(time.RFC3339),
+			"status":      "ok",
+			"instance_id": instanceID,
+			"time":        time.Now().Format(time.RFC3339),
 		})
 	})
 

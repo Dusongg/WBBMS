@@ -1,4 +1,31 @@
+version: "3.9"
+
+x-app-env: &app-env
+  APP_ENV: production
+  SERVER_PORT: 8888
+  MYSQL_PATH: mysql:3306
+  MYSQL_DB_NAME: ${MYSQL_DATABASE:-bookadmin}
+  MYSQL_USERNAME: root
+  MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+  REDIS_ADDR: redis:6379
+  JWT_SECRET: ${JWT_SECRET:-bookadmin-change-me}
+  SECURITY_CORS_ALLOWED_ORIGINS: ${SECURITY_CORS_ALLOWED_ORIGINS:-http://localhost}
+
+x-app-base: &app-base
+  image: bookadmin:latest
+  restart: unless-stopped
+  environment:
+    <<: *app-env
+  networks:
+    - bookadmin-network
+  depends_on:
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
+
   mysql:
     image: mysql:8.0
     container_name: bookadmin-mysql
@@ -8,16 +35,15 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-bookadmin}
       TZ: Asia/Shanghai
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
-      - --default-authentication-plugin=mysql_native_password
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      test: ["CMD", "sh", "-c", "mysqladmin ping -h 127.0.0.1 -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -42,130 +68,61 @@ services:
       - bookadmin-network
 
   migrate:
-    profiles: ["app"]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: ["-mode=migrate"]
+    <<: *app-base
+    container_name: bookadmin-migrate
     restart: "no"
+    command: ["-mode=migrate"]
     environment:
-      APP_ENV: production
-      SERVER_PORT: 8888
-      MYSQL_PATH: mysql:3306
-      MYSQL_DB_NAME: ${MYSQL_DATABASE:-bookadmin}
-      MYSQL_USERNAME: root
-      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      REDIS_ADDR: redis:6379
-      JWT_SECRET: ${JWT_SECRET:-bookadmin-change-me}
+      <<: *app-env
       MIGRATION_AUTO_MIGRATE: "true"
       SECURITY_SEED_DEFAULT_USERS: "true"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - bookadmin-network
 
-  api:
-    profiles: ["app"]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: bookadmin-api
-    restart: unless-stopped
+  api1:
+    <<: *app-base
+    container_name: bookadmin-api-1
     command: ["-mode=api"]
     environment:
-      APP_ENV: production
-      SERVER_PORT: 8888
-      MYSQL_PATH: mysql:3306
-      MYSQL_DB_NAME: ${MYSQL_DATABASE:-bookadmin}
-      MYSQL_USERNAME: root
-      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      REDIS_ADDR: redis:6379
-      JWT_SECRET: ${JWT_SECRET:-bookadmin-change-me}
-      SECURITY_CORS_ALLOWED_ORIGINS: ${SECURITY_CORS_ALLOWED_ORIGINS:-http://localhost}
-      MIGRATION_AUTO_MIGRATE: "false"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8888/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-    networks:
-      - bookadmin-network
+      <<: *app-env
+      APP_INSTANCE_ID: "api-1"
+
+  api2:
+    <<: *app-base
+    container_name: bookadmin-api-2
+    command: ["-mode=api"]
+    environment:
+      <<: *app-env
+      APP_INSTANCE_ID: "api-2"
+
+  api3:
+    <<: *app-base
+    container_name: bookadmin-api-3
+    command: ["-mode=api"]
+    environment:
+      <<: *app-env
+      APP_INSTANCE_ID: "api-3"
 
   worker:
-    profiles: ["app"]
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *app-base
     container_name: bookadmin-worker
-    restart: unless-stopped
     command: ["-mode=worker"]
-    environment:
-      APP_ENV: production
-      MYSQL_PATH: mysql:3306
-      MYSQL_DB_NAME: ${MYSQL_DATABASE:-bookadmin}
-      MYSQL_USERNAME: root
-      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      REDIS_ADDR: redis:6379
-      JWT_SECRET: ${JWT_SECRET:-bookadmin-change-me}
-      MIGRATION_AUTO_MIGRATE: "false"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - bookadmin-network
 
   scheduler:
-    profiles: ["app"]
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *app-base
     container_name: bookadmin-scheduler
-    restart: unless-stopped
     command: ["-mode=scheduler"]
-    environment:
-      APP_ENV: production
-      MYSQL_PATH: mysql:3306
-      MYSQL_DB_NAME: ${MYSQL_DATABASE:-bookadmin}
-      MYSQL_USERNAME: root
-      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      REDIS_ADDR: redis:6379
-      JWT_SECRET: ${JWT_SECRET:-bookadmin-change-me}
-      MIGRATION_AUTO_MIGRATE: "false"
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - bookadmin-network
 
   nginx:
-    profiles: ["app"]
     build:
       context: .
       dockerfile: deploy/nginx/Dockerfile
     container_name: bookadmin-nginx
     restart: unless-stopped
     ports:
-      - "${NGINX_PORT:-80}:80"
+      - "80:80"
     depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
+      - api1
+      - api2
+      - api3
     networks:
       - bookadmin-network
 
@@ -176,4 +133,3 @@ volumes:
 networks:
   bookadmin-network:
     driver: bridge
-

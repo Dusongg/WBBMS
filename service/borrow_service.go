@@ -662,12 +662,31 @@ func (s *BorrowService) SendDueReminders() error {
 		return err
 	}
 
+	messageService := &MessageService{}
 	for _, record := range dueRecords {
-		// TODO: 发送提醒通知（邮件、短信、站内信等）
-		global.GVA_LOG.Info("发送到期提醒",
-			zap.Uint("reader_id", record.ReaderID),
-			zap.Uint("book_id", record.BookID),
-			zap.Time("due_date", record.DueDate))
+		title := "📚 图书即将到期"
+		content := fmt.Sprintf("您借阅的《%s》将于 %s 到期，请及时归还或办理续借。",
+			record.Book.Title, record.DueDate.Format("2006-01-02 15:04"))
+
+		relatedID := record.ID
+		if err := messageService.CreateMessage(
+			record.Reader.UserID,
+			model.MessageTypeBorrow,
+			title,
+			content,
+			&relatedID,
+			"borrow",
+		); err != nil {
+			global.GVA_LOG.Error("发送到期提醒站内消息失败",
+				zap.Uint("reader_id", record.ReaderID),
+				zap.Uint("book_id", record.BookID),
+				zap.Error(err))
+		} else {
+			global.GVA_LOG.Info("发送到期提醒站内消息成功",
+				zap.Uint("reader_id", record.ReaderID),
+				zap.Uint("book_id", record.BookID),
+				zap.Time("due_date", record.DueDate))
+		}
 	}
 
 	return nil
