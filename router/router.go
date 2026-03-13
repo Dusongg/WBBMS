@@ -11,7 +11,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// traceIDHeaderMiddleware 将 trace_id 写入响应头，便于前端/日志关联（在 c.Next 前写入，确保 header 生效）
+func traceIDHeaderMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		span := trace.SpanFromContext(c.Request.Context())
+		if span.SpanContext().HasTraceID() {
+			c.Header("X-Trace-ID", span.SpanContext().TraceID().String())
+		}
+		c.Next()
+	}
+}
 
 var instanceID = initInstanceID()
 
@@ -35,8 +48,17 @@ func InitRouter() *gin.Engine {
 	Router.Use(gin.Recovery())
 	Router.Use(func(c *gin.Context) {
 		c.Header("X-Instance-ID", instanceID)
+		if observability.TracerEnabled() {
+			c.Header("X-Tracing-Status", "enabled")
+		} else {
+			c.Header("X-Tracing-Status", "disabled")
+		}
 		c.Next()
 	})
+	if observability.TracerEnabled() {
+		Router.Use(otelgin.Middleware("bookadmin-api"))
+		Router.Use(traceIDHeaderMiddleware())
+	}
 	Router.Use(middleware.RequestContext())
 	Router.Use(middleware.CORS())
 
@@ -97,6 +119,16 @@ func InitRouter() *gin.Engine {
 	// API路由组
 	apiRouter := Router.Group("api")
 	{
+		// 健康检查（供验证脚本 /api/healthz 使用，nginx 会代理此路径）
+		apiRouter.GET("/healthz", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"status":          "ok",
+				"instance_id":     instanceID,
+				"time":            time.Now().Format(time.RFC3339),
+				"tracing_enabled": observability.TracerEnabled(),
+			})
+		})
+
 		// 认证相关（无需JWT）
 		InitAuthRouter(apiRouter)
 

@@ -65,6 +65,11 @@ cron:
 metrics:
   enabled: true
 
+tracing:
+  enabled: true
+  endpoint: localhost:4317
+  service: bookadmin-api
+
 migration:
   auto-migrate: false  # 改为 false 跳过启动时自动迁移；需要时执行: go run main.go --mode=migrate
 

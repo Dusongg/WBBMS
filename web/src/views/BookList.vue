@@ -134,31 +134,22 @@
       </div>
 
       <div class="nav-right" :class="{ 'no-add-btn': !hasAdminOrLibrarianRole() }">
-        <transition name="search-input-slide">
+        <div class="search-expand-slot">
+        <div class="search-expand-wrapper">
+          <div class="search-expand-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+              <path d="M18.9,16.776A10.539,10.539,0,1,0,16.776,18.9l5.1,5.1L24,21.88ZM10.5,18A7.5,7.5,0,1,1,18,10.5,7.507,7.507,0,0,1,10.5,18Z"/>
+            </svg>
+          </div>
           <el-input
-            v-if="showSearchInput"
             v-model="searchKeyword"
             placeholder="搜索图书..."
             clearable
             @input="handleSearch"
-            @blur="handleSearchBlur"
-            class="top-search-input"
-            :class="{ 'no-add-btn': !hasAdminOrLibrarianRole() }"
-            ref="searchInputRef"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-        </transition>
-        <el-button 
-          circle 
-          class="nav-icon-btn search-btn" 
-          :class="{ 'search-active': showSearchInput }"
-          @click="handleSearchClick"
-        >
-          <el-icon><Search /></el-icon>
-        </el-button>
+            class="search-expand-input"
+          />
+        </div>
+        </div>
         
         <!-- 消息按钮 -->
         <el-popover
@@ -198,33 +189,54 @@
               <div
                 v-for="message in messages"
                 :key="message.id || message.ID"
+                role="alert"
                 class="message-item"
-                :class="{ 'unread': !message.is_read }"
-                @click="handleMessageClick(message)"
+                :class="[
+                  `message-item-${getMessageVariant(message)}`,
+                  { 'unread': !message.is_read }
+                ]"
               >
-                <div class="message-icon">
-                  <el-icon v-if="message.type === 'reservation'" color="#67C23A"><Ticket /></el-icon>
-                  <el-icon v-else-if="message.type === 'borrow'" color="#409EFF"><Reading /></el-icon>
-                  <el-icon v-else-if="message.type === 'overdue'" color="#F56C6C"><Warning /></el-icon>
-                  <el-icon v-else color="#909399"><Bell /></el-icon>
-                </div>
-                <div class="message-content">
-                  <div class="message-title-row">
-                    <span class="message-item-title">{{ message.title }}</span>
-                    <span class="message-time">{{ formatMessageTime(message.created_at) }}</span>
+                <div class="message-item-body" @click="handleMessageBodyClick(message)">
+                  <svg
+                    class="message-item-info-icon"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M13 16h-1v-4h1m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                  </svg>
+                  <div class="message-content">
+                    <div class="message-title-row">
+                      <span class="message-item-title">{{ message.title }}</span>
+                      <span class="message-time">{{ formatMessageTime(message.created_at) }}</span>
+                    </div>
+                    <div class="message-text">{{ message.content }}</div>
                   </div>
-                  <div class="message-text">{{ message.content }}</div>
                 </div>
-                <el-button
-                  v-if="!message.is_read"
-                  circle
-                  size="small"
-                  class="mark-read-btn"
-                  @click.stop="handleMarkRead(message.id || message.ID)"
-                  title="标记为已读"
-                >
-                  <el-icon><Check /></el-icon>
-                </el-button>
+                <div class="message-item-actions">
+                  <el-button
+                    v-if="!message.is_read"
+                    circle
+                    size="small"
+                    class="mark-read-btn"
+                    @click.stop="handleMarkRead(message.id || message.ID)"
+                    title="标记为已读"
+                  >
+                    <el-icon><Check /></el-icon>
+                  </el-button>
+                  <el-button
+                    circle
+                    size="small"
+                    class="message-arrow-btn"
+                    title="前往处理"
+                    @click.stop="handleMessageNavigate(message)"
+                  >
+                    <svg class="message-arrow-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <polyline points="9 18 15 12 9 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </el-button>
+                </div>
               </div>
               
               <div v-if="messages.length === 0 && !messageLoading" class="empty-message">
@@ -238,6 +250,50 @@
             </div>
           </div>
         </el-popover>
+
+        <!-- 消息详情卡片（居中浮层） -->
+        <Teleport to="body">
+          <div
+            v-if="messageDetailCardVisible && selectedMessageDetail"
+            class="message-detail-overlay"
+            @click.self="closeMessageDetailCard"
+          >
+              <div class="message-detail-card" :class="`message-detail-card-${getMessageVariant(selectedMessageDetail)}`">
+                <button class="message-detail-close" aria-label="关闭" @click="closeMessageDetailCard">
+                  <el-icon><Close /></el-icon>
+                </button>
+                <div class="message-detail-header">
+                  <svg
+                    class="message-detail-info-icon"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M13 16h-1v-4h1m0-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                  </svg>
+                  <div class="message-detail-title-row">
+                    <h3 class="message-detail-title">{{ selectedMessageDetail.title }}</h3>
+                    <span class="message-detail-time">{{ formatMessageTime(selectedMessageDetail.created_at) }}</span>
+                  </div>
+                </div>
+                <div class="message-detail-content">{{ selectedMessageDetail.content }}</div>
+                <div class="message-detail-footer">
+                  <el-button
+                    circle
+                    type="primary"
+                    class="message-detail-action-btn"
+                    title="前往处理"
+                    @click="handleMessageNavigate(selectedMessageDetail)"
+                  >
+                    <svg class="message-detail-arrow-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <polyline points="9 18 15 12 9 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </el-button>
+                </div>
+              </div>
+            </div>
+        </Teleport>
         
         <el-button
           v-if="hasAdminOrLibrarianRole()"
@@ -979,7 +1035,6 @@ export default {
     const bookList = ref([])
     const searchKeyword = ref('')
     const showListView = ref(false)
-    const showSearchInput = ref(false)
     const viewMode = ref('all') // 'all' | 'borrow' | 'like' | 'favorite'
     
     // 消息相关状态
@@ -1002,7 +1057,6 @@ export default {
     const showPayFineDialog = ref(false)
     const currentFineRecord = ref(null)
     const fineLoading = ref(false)
-    const searchInputRef = ref(null)
     const bookDetailVisible = ref(false)
     const selectedBook = ref(null)
     const detailTrendRemoteData = ref(null)
@@ -2393,11 +2447,29 @@ export default {
       unreadPollingTimer = null
     }
     
-    const handleMessageClick = async (message) => {
+    const messageDetailCardVisible = ref(false)
+    const selectedMessageDetail = ref(null)
+
+    const handleMessageBodyClick = async (message) => {
       if (!message.is_read) {
         await handleMarkRead(message.id || message.ID)
       }
-      
+      selectedMessageDetail.value = message
+      messageDetailCardVisible.value = true
+      showMessagePopover.value = false
+    }
+
+    const handleMessageNavigate = async (message) => {
+      if (!message) return
+      if (!message.is_read) {
+        await handleMarkRead(message.id || message.ID)
+      }
+      // 先关闭浮层，再执行跳转，避免 Transition 与 Teleport 组合时的渲染冲突
+      messageDetailCardVisible.value = false
+      nextTick(() => {
+        selectedMessageDetail.value = null
+      })
+
       // 根据消息类型和关联信息跳转到相应页面
       if (message.type === 'reservation' && message.related_id) {
         // 预约消息：跳转到图书管理页面，并尝试定位到相关图书
@@ -2438,8 +2510,15 @@ export default {
       } else {
         // 其他消息类型，跳转到我的借阅页面
         router.push('/books?view=borrow')
-        showMessagePopover.value = false
       }
+      showMessagePopover.value = false
+    }
+
+    const closeMessageDetailCard = () => {
+      messageDetailCardVisible.value = false
+      nextTick(() => {
+        selectedMessageDetail.value = null
+      })
     }
     
     const handleMarkRead = async (messageId) => {
@@ -2488,6 +2567,17 @@ export default {
     const handleLoadMoreMessages = () => {
       // 可以实现加载更多消息的逻辑
       ElMessage.info('功能开发中...')
+    }
+
+    const getMessageVariant = (message) => {
+      const type = message?.type || ''
+      const title = String(message?.title || '')
+      if (type === 'reservation') return 'success'
+      if (type === 'borrow') return 'info'
+      if (type === 'overdue' || type === 'fine') return 'warning'
+      if (title.includes('解除') || title.includes('已恢复')) return 'info'
+      if (title.includes('停用') || (title.includes('黑名单') && !title.includes('解除'))) return 'error'
+      return 'info'
     }
     
     const formatMessageTime = (dateString) => {
@@ -2836,30 +2926,6 @@ export default {
 
     const handleSearch = () => {
       fetchBookList()
-    }
-
-    const handleSearchClick = () => {
-      showSearchInput.value = !showSearchInput.value
-      
-      // 如果打开搜索框，聚焦到输入框
-      if (showSearchInput.value) {
-        nextTick(() => {
-          if (searchInputRef.value) {
-            searchInputRef.value.focus()
-          }
-        })
-      }
-    }
-
-    const handleSearchBlur = () => {
-      // 如果搜索框为空，延迟关闭搜索框（给用户时间点击清除按钮）
-      if (!searchKeyword.value) {
-        setTimeout(() => {
-          if (!searchKeyword.value) {
-            showSearchInput.value = false
-          }
-        }, 200)
-      }
     }
 
     const handleAdd = async () => {
@@ -3523,19 +3589,22 @@ export default {
       bookList,
       searchKeyword,
       showListView,
-      showSearchInput,
-      searchInputRef,
       // 消息相关
       showMessagePopover,
       messages,
       unreadCount,
       messageLoading,
       fetchMessages,
-      handleMessageClick,
+      handleMessageBodyClick,
+      handleMessageNavigate,
+      messageDetailCardVisible,
+      selectedMessageDetail,
+      closeMessageDetailCard,
       handleMarkRead,
       handleMarkAllRead,
       handleLoadMoreMessages,
       formatMessageTime,
+      getMessageVariant,
       getBorrowButtonTitle,
       handleReturnOverdueBook,
       handlePayFine,
@@ -3589,7 +3658,6 @@ export default {
       handleCategoryNameBlur,
       handleDeleteCategory,
       categoryEditInputRefs,
-      handleSearchBlur,
       getDefaultCover,
       handleImageError,
       getBookStyle,
@@ -3607,7 +3675,6 @@ export default {
       currentCategoryPage,
       scrollToCategory,
       handleSearch,
-      handleSearchClick,
       handleAdd,
       handleEdit,
       handleEditFromDetail,
@@ -3705,45 +3772,76 @@ export default {
   transition: all 0.3s ease;
 }
 
-.nav-icon-btn.search-btn.search-active {
-  transform: translateX(-240px);
+/* 搜索框：固定宽度槽位，避免展开时挤压 nav-tabs */
+.search-expand-slot {
+  width: 270px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
 }
 
-.top-search-input {
-  width: 220px;
-  position: absolute;
-  right: 192px; /* 管理员模式：152px + 40px（按钮左移的距离） */
+/* 搜索框：悬停展开动画（40px → 270px），与 nav-icon-btn 同尺寸 */
+.search-expand-wrapper {
+  overflow: hidden;
+  width: 40px;
+  height: 40px;
+  background: #4070f4;
+  box-shadow: 2px 2px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  transition: width 0.3s ease;
 }
 
-/* 普通用户模式：2个按钮（搜索 + 更多），搜索框更靠左避免重叠 */
-.top-search-input.no-add-btn {
-  right: 168px; /* 120px + 48px（额外左移的距离） */
+.search-expand-wrapper:hover {
+  width: 270px;
 }
 
-.top-search-input :deep(.el-input__wrapper) {
-  background: white;
-  border: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  border-radius: 20px;
-  padding: 4px 12px;
+.search-expand-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
 }
 
-.search-input-slide-enter-active,
-.search-input-slide-leave-active {
-  transition: all 0.3s ease;
+.search-expand-icon svg {
+  width: 20px;
+  height: 20px;
 }
 
-.search-input-slide-enter-from {
-  opacity: 0;
-  transform: translateX(20px);
+.search-expand-input {
+  flex: 1;
+  min-width: 0;
 }
 
-.search-input-slide-leave-to {
-  opacity: 0;
-  transform: translateX(20px);
+.search-expand-input :deep(.el-input__wrapper) {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 16px;
+}
+
+.search-expand-input :deep(.el-input__inner) {
+  color: #fff;
+  font-size: 20px;
+}
+
+.search-expand-input :deep(.el-input__inner::placeholder) {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.search-expand-input :deep(.el-input__suffix) {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .nav-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
 }
@@ -5424,6 +5522,19 @@ h2.category-title[data-status="reserved"] {
   }
 }
 
+/* 消息弹窗磨砂透明（与 detail-trend-card 一致） */
+:global(.el-popper.message-popover) {
+  background: rgba(255, 255, 255, 0.48) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+}
+:global(.el-popper.message-popover .el-popper__arrow::before) {
+  background: rgba(255, 255, 255, 0.48) !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
+}
+
 .message-dropdown {
   max-height: 600px;
   display: flex;
@@ -5447,35 +5558,112 @@ h2.category-title[data-status="reserved"] {
 .message-list {
   max-height: 400px;
   overflow-y: auto;
+  padding: 8px;
 }
 
 .message-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 12px 16px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-  border-bottom: 1px solid #f5f5f5;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border-left: 4px solid;
+  transition: background-color 0.3s, transform 0.2s ease;
 }
-
+.message-item:last-child {
+  margin-bottom: 0;
+}
 .message-item:hover {
-  background-color: #f9fafb;
+  transform: scale(1.02);
 }
 
-.message-item.unread {
-  background-color: #f0f9ff;
+.message-item-success {
+  background: rgba(161, 247, 192, 0.25);
+  border-left-color: #a1f7c0;
+  color: #166534;
+}
+.message-item-success:hover {
+  background: rgba(161, 247, 192, 0.4);
 }
 
-.message-icon {
+.message-item-info {
+  background: rgba(166, 198, 251, 0.25);
+  border-left-color: #a6c6fb;
+  color: #1e40af;
+}
+.message-item-info:hover {
+  background: rgba(166, 198, 251, 0.4);
+}
+
+.message-item-warning {
+  background: rgba(255, 230, 155, 0.4);
+  border-left-color: #ffe69b;
+  color: #854d0e;
+}
+.message-item-warning:hover {
+  background: rgba(255, 230, 155, 0.55);
+}
+
+.message-item-error {
+  background: rgba(255, 157, 157, 0.25);
+  border-left-color: #ff9d9d;
+  color: #991b1b;
+}
+.message-item-error:hover {
+  background: rgba(255, 157, 157, 0.4);
+}
+
+.message-item-info-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.message-item-success .message-item-info-icon { color: #a1f7c0; }
+.message-item-info .message-item-info-icon { color: #a6c6fb; }
+.message-item-warning .message-item-info-icon { color: #ffe69b; }
+.message-item-error .message-item-info-icon { color: #ff9d9d; }
+
+.message-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.message-item-actions {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background-color: #f3f4f6;
+  gap: 4px;
+}
+
+.message-arrow-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  color: inherit !important;
+  transition: opacity 0.2s;
+}
+.message-arrow-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  color: inherit;
+  fill: currentColor;
+}
+.message-item:hover .message-arrow-btn {
+  opacity: 1;
+}
+
+.message-item.unread {
+  font-weight: 600;
 }
 
 .message-content {
@@ -5491,21 +5679,22 @@ h2.category-title[data-status="reserved"] {
 }
 
 .message-item-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
 }
 
 .message-time {
-  font-size: 12px;
-  color: #909399;
+  font-size: 11px;
+  opacity: 0.85;
   flex-shrink: 0;
   margin-left: 8px;
 }
 
 .message-text {
-  font-size: 13px;
-  color: #606266;
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.9;
   line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5543,6 +5732,140 @@ h2.category-title[data-status="reserved"] {
   padding: 12px 16px;
   text-align: center;
   border-top: 1px solid #f0f0f0;
+}
+
+/* 消息详情卡片（与 detail-trend-card 相同的磨砂透明风格） */
+.message-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: transparent;
+}
+
+.message-detail-card {
+  position: relative;
+  width: min(480px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-left-width: 4px;
+  background: rgba(255, 255, 255, 0.48);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.15);
+  padding: 24px;
+}
+
+.message-detail-card-success { border-left-color: #a1f7c0; }
+.message-detail-card-info { border-left-color: #a6c6fb; }
+.message-detail-card-warning { border-left-color: #ffe69b; }
+.message-detail-card-error { border-left-color: #ff9d9d; }
+
+.message-detail-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.2);
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.message-detail-close:hover {
+  background: rgba(148, 163, 184, 0.35);
+  color: #0f172a;
+}
+
+.message-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.message-detail-info-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+}
+
+.message-detail-card-success .message-detail-info-icon { color: #a1f7c0; }
+.message-detail-card-info .message-detail-info-icon { color: #a6c6fb; }
+.message-detail-card-warning .message-detail-info-icon { color: #ffe69b; }
+.message-detail-card-error .message-detail-info-icon { color: #ff9d9d; }
+
+.message-detail-title-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.message-detail-title {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.message-detail-time {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.message-detail-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #334155;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+}
+
+.message-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.message-detail-action-btn {
+  width: 40px;
+  height: 40px;
+}
+.message-detail-arrow-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  color: inherit;
+  fill: currentColor;
+}
+
+/* 消息详情卡片过渡 */
+.message-detail-fade-enter-active,
+.message-detail-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.message-detail-fade-enter-active .message-detail-card,
+.message-detail-fade-leave-active .message-detail-card {
+  transition: transform 0.25s ease;
+}
+.message-detail-fade-enter-from,
+.message-detail-fade-leave-to {
+  opacity: 0;
+}
+.message-detail-fade-enter-from .message-detail-card,
+.message-detail-fade-leave-to .message-detail-card {
+  transform: scale(0.95);
 }
 
 /* 消息跳转高亮样式 */
@@ -5622,18 +5945,18 @@ h2.category-title[data-status="reserved"] {
   color: #cbd5e1;
 }
 
-:global(body.app-theme-dark .book-gallery-page .top-search-input .el-input__wrapper) {
-  background: rgba(15, 23, 42, 0.88);
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.55);
+:global(body.app-theme-dark .book-gallery-page .search-expand-input .el-input__wrapper) {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
-:global(body.app-theme-dark .book-gallery-page .top-search-input .el-input__inner) {
-  color: #e2e8f0;
+:global(body.app-theme-dark .book-gallery-page .search-expand-input .el-input__inner) {
+  color: #fff;
 }
 
-:global(body.app-theme-dark .book-gallery-page .top-search-input .el-input__inner::placeholder) {
-  color: #94a3b8;
+:global(body.app-theme-dark .book-gallery-page .search-expand-input .el-input__inner::placeholder) {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 :global(body.app-theme-dark .book-gallery-page .nav-tabs) {
@@ -5687,22 +6010,81 @@ h2.category-title[data-status="reserved"] {
   background-color: rgba(148, 163, 184, 0.25);
 }
 
-:global(body.app-theme-dark .el-popper.category-popover-panel),
-:global(body.app-theme-dark .el-popper.message-popover) {
+:global(body.app-theme-dark .el-popper.category-popover-panel) {
   background: rgba(15, 23, 42, 0.94) !important;
   border: 1px solid rgba(148, 163, 184, 0.24) !important;
   box-shadow: 0 10px 30px rgba(2, 6, 23, 0.55) !important;
 }
 
-:global(body.app-theme-dark .el-popper.category-popover-panel .el-popper__arrow::before),
-:global(body.app-theme-dark .el-popper.message-popover .el-popper__arrow::before) {
+:global(body.app-theme-dark .el-popper.message-popover) {
+  background: rgba(15, 23, 42, 0.52) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(148, 163, 184, 0.24) !important;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.48);
+}
+
+:global(body.app-theme-dark .el-popper.category-popover-panel .el-popper__arrow::before) {
   background: rgba(15, 23, 42, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+:global(body.app-theme-dark .el-popper.message-popover .el-popper__arrow::before) {
+  background: rgba(15, 23, 42, 0.52) !important;
   border-color: rgba(148, 163, 184, 0.24) !important;
 }
 
 :global(body.app-theme-dark .book-gallery-page .category-popover),
 :global(body.app-theme-dark .message-dropdown) {
   color: #e2e8f0;
+}
+
+:global(body.app-theme-dark .message-item-success) {
+  background: rgba(161, 247, 192, 0.18);
+  border-left-color: #a1f7c0;
+  color: #86efac;
+}
+:global(body.app-theme-dark .message-item-success:hover) {
+  background: rgba(161, 247, 192, 0.28);
+}
+:global(body.app-theme-dark .message-item-success .message-item-info-icon) {
+  color: #a1f7c0;
+}
+
+:global(body.app-theme-dark .message-item-info) {
+  background: rgba(166, 198, 251, 0.18);
+  border-left-color: #a6c6fb;
+  color: #93c5fd;
+}
+:global(body.app-theme-dark .message-item-info:hover) {
+  background: rgba(166, 198, 251, 0.28);
+}
+:global(body.app-theme-dark .message-item-info .message-item-info-icon) {
+  color: #a6c6fb;
+}
+
+:global(body.app-theme-dark .message-item-warning) {
+  background: rgba(255, 230, 155, 0.22);
+  border-left-color: #ffe69b;
+  color: #fde047;
+}
+:global(body.app-theme-dark .message-item-warning:hover) {
+  background: rgba(255, 230, 155, 0.32);
+}
+:global(body.app-theme-dark .message-item-warning .message-item-info-icon) {
+  color: #ffe69b;
+}
+
+:global(body.app-theme-dark .message-item-error) {
+  background: rgba(255, 157, 157, 0.18);
+  border-left-color: #ff9d9d;
+  color: #fca5a5;
+}
+:global(body.app-theme-dark .message-item-error:hover) {
+  background: rgba(255, 157, 157, 0.28);
+}
+:global(body.app-theme-dark .message-item-error .message-item-info-icon) {
+  color: #ff9d9d;
 }
 
 :global(body.app-theme-dark .book-gallery-page .category-popover-title),
@@ -5718,5 +6100,47 @@ h2.category-title[data-status="reserved"] {
 :global(body.app-theme-dark .book-gallery-page .category-popover-footer) {
   border-color: rgba(148, 163, 184, 0.25);
   background: transparent;
+}
+
+/* 消息详情卡片暗色模式（与 detail-trend-card 一致） */
+:global(body.app-theme-dark .message-detail-overlay) {
+  background: transparent;
+}
+
+:global(body.app-theme-dark .message-detail-card) {
+  background: rgba(15, 23, 42, 0.52);
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.48);
+}
+:global(body.app-theme-dark .message-detail-card-success) { border-left-color: #a1f7c0; }
+:global(body.app-theme-dark .message-detail-card-info) { border-left-color: #a6c6fb; }
+:global(body.app-theme-dark .message-detail-card-warning) { border-left-color: #ffe69b; }
+:global(body.app-theme-dark .message-detail-card-error) { border-left-color: #ff9d9d; }
+:global(body.app-theme-dark .message-detail-card-success .message-detail-info-icon) { color: #a1f7c0; }
+:global(body.app-theme-dark .message-detail-card-info .message-detail-info-icon) { color: #a6c6fb; }
+:global(body.app-theme-dark .message-detail-card-warning .message-detail-info-icon) { color: #ffe69b; }
+:global(body.app-theme-dark .message-detail-card-error .message-detail-info-icon) { color: #ff9d9d; }
+
+:global(body.app-theme-dark .message-detail-close) {
+  background: rgba(148, 163, 184, 0.25);
+  color: #94a3b8;
+}
+:global(body.app-theme-dark .message-detail-close:hover) {
+  background: rgba(148, 163, 184, 0.4);
+  color: #f8fafc;
+}
+
+
+:global(body.app-theme-dark .message-detail-title) {
+  color: #f8fafc;
+}
+
+:global(body.app-theme-dark .message-detail-time) {
+  color: #94a3b8;
+}
+
+:global(body.app-theme-dark .message-detail-content) {
+  color: #e2e8f0;
+  background: rgba(30, 41, 59, 0.5);
 }
 </style>

@@ -8,129 +8,127 @@
     <div class="bottom-bar">
       <div class="bottom-bar-content">
         <!-- 导航菜单 -->
-        <el-tooltip content="图书管理" placement="top" :show-after="100" :hide-after="0">
-          <button 
-            class="bottom-btn" 
-            :class="{ active: $route.path === '/books' && !$route.query.view }"
-            @click="$router.push('/books')"
-          >
-            <el-icon><Reading /></el-icon>
-          </button>
-        </el-tooltip>
-        <el-tooltip content="图书榜单" placement="top" :show-after="100" :hide-after="0">
-          <button 
-            class="bottom-btn"
-            :class="{ active: $route.path === '/ranking' }"
-            @click="$router.push('/ranking')"
-          >
-            <el-icon><TrendCharts /></el-icon>
-          </button>
-        </el-tooltip>
-        <el-tooltip content="我的借阅" placement="top" :show-after="100" :hide-after="0">
-          <button 
-            class="bottom-btn"
-            :class="{ active: $route.path === '/books' && $route.query.view === 'borrow' }"
-            @click="$router.push({ path: '/books', query: { view: 'borrow' } })"
-          >
-            <el-icon><List /></el-icon>
-          </button>
-        </el-tooltip>
-        <el-tooltip v-if="hasAdminOrLibrarianRole()" content="读者管理" placement="top" :show-after="100" :hide-after="0">
-          <button 
-            class="bottom-btn"
-            :class="{ active: $route.path === '/readers' }"
-            @click="$router.push('/readers')"
-          >
-            <el-icon><User /></el-icon>
-          </button>
-        </el-tooltip>
-        <el-tooltip v-if="hasAdminOrLibrarianRole()" content="借还管理" placement="top" :show-after="100" :hide-after="0">
-          <button 
-            class="bottom-btn"
-            :class="{ active: $route.path === '/borrow' }"
-            @click="$router.push('/borrow')"
-          >
-            <el-icon><Document /></el-icon>
-          </button>
-        </el-tooltip>
+        <button
+          class="bottom-link"
+          :class="{ active: $route.path === '/books' && !$route.query.view }"
+          @click="$router.push('/books')"
+        >
+          <span class="link-icon"><el-icon><Reading /></el-icon></span>
+          <span class="link-title">图书管理</span>
+        </button>
+        <button
+          class="bottom-link"
+          :class="{ active: $route.path === '/ranking' }"
+          @click="$router.push('/ranking')"
+        >
+          <span class="link-icon"><el-icon><TrendCharts /></el-icon></span>
+          <span class="link-title">图书榜单</span>
+        </button>
+        <button
+          class="bottom-link"
+          :class="{ active: $route.path === '/books' && $route.query.view === 'borrow' }"
+          @click="$router.push({ path: '/books', query: { view: 'borrow' } })"
+        >
+          <span class="link-icon"><el-icon><List /></el-icon></span>
+          <span class="link-title">我的借阅</span>
+        </button>
+        <button
+          v-if="hasAdminOrLibrarianRole()"
+          class="bottom-link"
+          :class="{ active: $route.path === '/readers' }"
+          @click="$router.push('/readers')"
+        >
+          <span class="link-icon"><el-icon><User /></el-icon></span>
+          <span class="link-title">读者管理</span>
+        </button>
+        <button
+          v-if="hasAdminOrLibrarianRole()"
+          class="bottom-link"
+          :class="{ active: $route.path === '/borrow' }"
+          @click="$router.push('/borrow')"
+        >
+          <span class="link-icon"><el-icon><Document /></el-icon></span>
+          <span class="link-title">借还管理</span>
+        </button>
+        <button
+          v-if="hasAdminOrLibrarianRole()"
+          class="bottom-link"
+          :class="{ active: $route.path === '/statistics' }"
+          @click="$router.push('/statistics')"
+        >
+          <span class="link-icon"><el-icon><DataAnalysis /></el-icon></span>
+          <span class="link-title">统计查询</span>
+        </button>
+        <button
+          v-if="isAdmin()"
+          class="bottom-link"
+          :class="{ active: $route.path === '/system' }"
+          @click="$router.push('/system')"
+        >
+          <span class="link-icon"><el-icon><Setting /></el-icon></span>
+          <span class="link-title">系统管理</span>
+        </button>
         
-        <el-tooltip v-if="hasAdminOrLibrarianRole()" content="统计查询" placement="top" :show-after="100" :hide-after="0">
-          <button 
-            class="bottom-btn"
-            :class="{ active: $route.path === '/statistics' }"
-            @click="$router.push('/statistics')"
-          >
-            <el-icon><DataAnalysis /></el-icon>
-          </button>
-        </el-tooltip>
-        <el-tooltip v-if="isAdmin()" content="系统管理" placement="top" :show-after="100" :hide-after="0">
-          <button 
-            class="bottom-btn"
-            :class="{ active: $route.path === '/system' }"
-            @click="$router.push('/system')"
-          >
-            <el-icon><Setting /></el-icon>
-          </button>
-        </el-tooltip>
-        
-        <!-- 分隔线 -->
         <div class="bottom-divider"></div>
         
-        <!-- 用户信息 -->
-        <el-tooltip content="用户信息" placement="top" :show-after="100" :hide-after="0">
-          <el-dropdown @command="handleUserCommand" trigger="click">
-            <button class="bottom-btn user-btn">
-              <el-icon><UserFilled /></el-icon>
-              <span class="user-name">{{ userInfo?.real_name || userInfo?.username || '用户' }}</span>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="profile">个人信息</el-dropdown-item>
-                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </el-tooltip>
-        <el-tooltip content="我喜欢的" placement="top" :show-after="100" :hide-after="0">
-          <button
-            class="bottom-btn"
-            :class="{ active: $route.path === '/books' && $route.query.view === 'like' }"
-            @click="$router.push({ path: '/books', query: { view: 'like' } })"
-          >
-            <el-icon><Star /></el-icon>
+        <el-dropdown @command="handleUserCommand" trigger="click">
+          <button class="bottom-link user-link">
+            <span class="link-icon"><el-icon><UserFilled /></el-icon></span>
+            <span class="link-title">{{ userInfo?.real_name || userInfo?.username || '用户' }}</span>
           </button>
-        </el-tooltip>
-        <el-tooltip content="我收藏的" placement="top" :show-after="100" :hide-after="0">
-          <button
-            class="bottom-btn"
-            :class="{ active: $route.path === '/books' && $route.query.view === 'favorite' }"
-            @click="$router.push({ path: '/books', query: { view: 'favorite' } })"
-          >
-            <el-icon><CollectionTag /></el-icon>
-          </button>
-        </el-tooltip>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="profile">个人信息</el-dropdown-item>
+              <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <button
+          class="bottom-link"
+          :class="{ active: $route.path === '/books' && $route.query.view === 'like' }"
+          @click="$router.push({ path: '/books', query: { view: 'like' } })"
+        >
+          <span class="link-icon">
+            <svg class="bottom-link-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="link-title">我喜欢的</span>
+        </button>
+        <button
+          class="bottom-link"
+          :class="{ active: $route.path === '/books' && $route.query.view === 'favorite' }"
+          @click="$router.push({ path: '/books', query: { view: 'favorite' } })"
+        >
+          <span class="link-icon">
+            <svg class="bottom-link-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="link-title">我收藏的</span>
+        </button>
+        
         <div class="bottom-divider"></div>
-        <div class="theme-switch theme-switch-in-bar" role="group" aria-label="Main theme mode">
-          <el-tooltip content="亮色模式" placement="top" :show-after="100" :hide-after="0">
-            <button
-              class="bottom-btn theme-switch-btn"
-              :class="{ active: themeMode === 'light' }"
-              aria-label="切换亮色模式"
-              @click="setThemeMode('light')"
-            >
-              <el-icon><Sunny /></el-icon>
-            </button>
-          </el-tooltip>
-          <el-tooltip content="暗色模式" placement="top" :show-after="100" :hide-after="0">
-            <button
-              class="bottom-btn theme-switch-btn"
-              :class="{ active: themeMode === 'dark' }"
-              aria-label="切换暗色模式"
-              @click="setThemeMode('dark')"
-            >
-              <el-icon><MoonNight /></el-icon>
-            </button>
-          </el-tooltip>
+        
+        <div class="theme-switch" role="group" aria-label="Main theme mode">
+          <button
+            class="bottom-link theme-link"
+            :class="{ active: themeMode === 'light' }"
+            aria-label="切换亮色模式"
+            @click="setThemeMode('light')"
+          >
+            <span class="link-icon"><el-icon><Sunny /></el-icon></span>
+            <span class="link-title">亮色模式</span>
+          </button>
+          <button
+            class="bottom-link theme-link"
+            :class="{ active: themeMode === 'dark' }"
+            aria-label="切换暗色模式"
+            @click="setThemeMode('dark')"
+          >
+            <span class="link-icon"><el-icon><MoonNight /></el-icon></span>
+            <span class="link-title">暗色模式</span>
+          </button>
         </div>
       </div>
     </div>
@@ -150,8 +148,6 @@ import {
   Setting,
   UserFilled,
   TrendCharts,
-  Star,
-  CollectionTag,
   Sunny,
   MoonNight
 } from '@element-plus/icons-vue'
@@ -168,8 +164,6 @@ export default {
     Setting,
     UserFilled,
     TrendCharts,
-    Star,
-    CollectionTag,
     Sunny,
     MoonNight
   },
@@ -249,7 +243,7 @@ export default {
   height: 100vh;
 }
 
-/* 底部功能栏 */
+/* 底部功能栏（仿 menu / link 展开样式） */
 .bottom-bar {
   position: fixed;
   bottom: 20px;
@@ -259,86 +253,131 @@ export default {
 }
 
 .bottom-bar-content {
-  background: var(--panel-bg);
-  backdrop-filter: blur(12px);
-  border-radius: 9999px;
-  padding: 12px 20px;
-  box-shadow: var(--panel-shadow);
-  border: 1px solid var(--panel-border);
+  padding: 8px;
+  background-color: #fff;
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px 0 rgba(0, 0, 0, 0.075);
+  border: 1px solid var(--panel-border);
 }
 
-.bottom-btn {
-  min-width: 40px;
-  height: 40px;
+.bottom-link {
+  display: inline-flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 9999px;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  transform-origin: center left;
+  transition: width 0.2s ease-in;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--btn-fg);
+  font-size: 14px;
+  text-decoration: none;
+  padding: 0;
+}
+
+.bottom-link::before {
+  position: absolute;
+  z-index: -1;
+  content: "";
+  display: block;
+  border-radius: 9999px;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  transform: translateX(100%);
+  transition: transform 0.2s ease-in;
+  transform-origin: center right;
+  background-color: #eee;
+}
+
+.bottom-link:hover,
+.bottom-link:focus {
+  outline: 0;
+  width: 120px;
+}
+
+.bottom-link:hover::before,
+.bottom-link:focus::before {
+  transform: translateX(0);
+}
+
+.bottom-link:hover .link-title,
+.bottom-link:focus .link-title {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.bottom-link.active::before {
+  transform: translateX(0);
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+.bottom-link.active {
+  color: var(--btn-active-fg);
+}
+
+.link-icon {
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--btn-fg);
-  font-size: 20px;
-  padding: 0 12px;
-  border-radius: 20px;
-  transition: all 0.2s;
+  flex-shrink: 0;
+  margin-left: 11px;
 }
 
-.bottom-btn:hover {
-  background: var(--btn-hover-bg);
-  color: var(--btn-hover-fg);
+.link-icon .el-icon {
+  font-size: 22px;
 }
 
-.bottom-btn.active {
-  background: var(--btn-active-bg);
-  color: var(--btn-active-fg);
+.link-icon .bottom-link-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.link-title {
+  transform: translateX(100%);
+  transition: transform 0.2s ease-in;
+  transform-origin: center right;
+  display: block;
+  text-align: left;
+  margin-left: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  color: inherit;
+  font-weight: 500;
+}
+
+.user-link .link-title {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bottom-divider {
   width: 1px;
   height: 24px;
   background: var(--divider-color);
-  margin: 0 8px;
-}
-
-.user-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-}
-
-.user-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--user-fg);
-  white-space: nowrap;
+  margin: 0 4px;
+  flex-shrink: 0;
 }
 
 .theme-switch {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0;
-  border-radius: 999px;
-}
-
-.theme-switch-in-bar .theme-switch-btn {
-  min-width: 40px;
-  height: 40px;
-  padding: 0;
-}
-
-.theme-switch-btn:hover {
-  background: var(--btn-hover-bg);
-  color: var(--btn-hover-fg);
-}
-
-.theme-switch-btn.active {
-  background: var(--btn-active-bg);
-  color: var(--btn-active-fg);
+  gap: 4px;
 }
 
 .layout-container.theme-dark {
@@ -353,6 +392,19 @@ export default {
   --btn-active-fg: #93c5fd;
   --divider-color: rgba(148, 163, 184, 0.35);
   --user-fg: #e2e8f0;
+}
+
+.layout-container.theme-dark .bottom-bar-content {
+  background-color: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 10px 25px 0 rgba(0, 0, 0, 0.3);
+}
+
+.layout-container.theme-dark .bottom-link::before {
+  background-color: rgba(148, 163, 184, 0.2);
+}
+
+.layout-container.theme-dark .bottom-link.active::before {
+  background-color: rgba(59, 130, 246, 0.25);
 }
 
 .layout-container.theme-dark :deep(.book-gallery-page) {

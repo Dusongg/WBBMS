@@ -4,6 +4,7 @@ import (
 	appconfig "bookadmin/config"
 	"bookadmin/global"
 	"bookadmin/initialize"
+	"bookadmin/observability"
 	"bookadmin/router"
 	"bookadmin/worker"
 	"context"
@@ -34,6 +35,15 @@ func main() {
 	}()
 
 	zap.L().Info("应用启动", zap.String("mode", *mode))
+
+	// 分布式追踪：api/all 模式需在 GORM 初始化前启用，以便 otelgorm 插件生效
+	if *mode == "api" || *mode == "all" {
+		if err := observability.InitTracer(context.Background()); err != nil {
+			zap.L().Warn("分布式追踪初始化失败，将不发送链路数据", zap.Error(err))
+		} else if observability.TracerEnabled() {
+			zap.L().Info("分布式追踪已启用")
+		}
+	}
 
 	// 初始化数据库
 	if initialize.GormMysql() == nil {
@@ -72,6 +82,14 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if observability.TracerEnabled() {
+		defer func() {
+			if err := observability.ShutdownTracer(context.Background()); err != nil {
+				zap.L().Warn("Tracer关闭异常", zap.Error(err))
+			}
+		}()
+	}
 
 	var server *http.Server
 	serverErrors := make(chan error, 1)

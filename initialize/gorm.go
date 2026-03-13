@@ -3,6 +3,7 @@ package initialize
 import (
 	"bookadmin/global"
 	"bookadmin/model"
+	"bookadmin/observability"
 	"bookadmin/service"
 	"fmt"
 
@@ -10,6 +11,8 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/uptrace/opentelemetry-go-extra/otelgorm"
 )
 
 func Gorm() *gorm.DB {
@@ -120,15 +123,20 @@ func GormMysql() *gorm.DB {
 		SkipInitializeWithVersion: false,
 	}
 
-	if db, err := gorm.Open(mysql.New(mysqlConfig), &gorm.Config{
-		Logger: logger.Default.LogMode(logMode),
-	}); err != nil {
+	gormCfg := &gorm.Config{Logger: logger.Default.LogMode(logMode)}
+	if observability.TracerEnabled() {
+		gormCfg.Plugins = map[string]gorm.Plugin{
+			"otelgorm": otelgorm.NewPlugin(),
+		}
+	}
+	appCfg := global.GVA_CONFIG
+	if db, err := gorm.Open(mysql.New(mysqlConfig), gormCfg); err != nil {
 		global.GVA_LOG.Error("MySQL启动异常", zap.Error(err))
 		return nil
 	} else {
 		sqlDB, _ := db.DB()
-		sqlDB.SetMaxIdleConns(cfg.MySQL.MaxIdleConns)
-		sqlDB.SetMaxOpenConns(cfg.MySQL.MaxOpenConns)
+		sqlDB.SetMaxIdleConns(appCfg.MySQL.MaxIdleConns)
+		sqlDB.SetMaxOpenConns(appCfg.MySQL.MaxOpenConns)
 		global.GVA_DB = db
 		return db
 	}

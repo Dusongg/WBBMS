@@ -23,6 +23,9 @@ type User struct {
 	Role     UserRole `json:"role" gorm:"type:enum('admin','librarian','reader');default:'reader';comment:角色"`
 	Status   string   `json:"status" gorm:"default:'active';comment:状态:active,inactive"`
 	RealName string   `json:"real_name" gorm:"comment:真实姓名"`
+
+	// Reader 关联：User has one Reader（与 Reader.User 互为 inverse）
+	Reader *Reader `json:"reader,omitempty" gorm:"foreignKey:UserID"`
 }
 
 func (User) TableName() string {

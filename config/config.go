@@ -21,6 +21,13 @@ type Config struct {
 	Metrics   MetricsConfig   `yaml:"metrics"`
 	Migration MigrationConfig `yaml:"migration"`
 	Security  SecurityConfig  `yaml:"security"`
+	Tracing   TracingConfig   `yaml:"tracing"`
+}
+
+type TracingConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Endpoint string `yaml:"endpoint"`
+	Service  string `yaml:"service"`
 }
 
 type AppConfig struct {
@@ -198,6 +205,11 @@ func defaultConfig() *Config {
 			CORSAllowedOrigins: []string{"http://localhost:8080"},
 			SeedDefaultUsers:   true,
 		},
+		Tracing: TracingConfig{
+			Enabled:  true,
+			Endpoint: "localhost:4317",
+			Service:  "bookadmin-api",
+		},
 	}
 }
 
@@ -260,6 +272,10 @@ func (c *Config) applyEnvOverrides() {
 	applyBool("METRICS_ENABLED", &c.Metrics.Enabled)
 	applyBool("MIGRATION_AUTO_MIGRATE", &c.Migration.AutoMigrate)
 	applyBool("SECURITY_SEED_DEFAULT_USERS", &c.Security.SeedDefaultUsers)
+
+	applyBool("TRACING_ENABLED", &c.Tracing.Enabled)
+	applyString("OTEL_EXPORTER_OTLP_ENDPOINT", &c.Tracing.Endpoint)
+	applyString("OTEL_SERVICE_NAME", &c.Tracing.Service)
 
 	if raw := strings.TrimSpace(os.Getenv("SECURITY_CORS_ALLOWED_ORIGINS")); raw != "" {
 		parts := strings.Split(raw, ",")
@@ -338,6 +354,12 @@ func (c *Config) applyDerivedDefaults() {
 	}
 	if len(c.Security.CORSAllowedOrigins) == 0 {
 		c.Security.CORSAllowedOrigins = []string{"http://localhost:8080"}
+	}
+	if c.Tracing.Service == "" {
+		c.Tracing.Service = c.App.Name
+	}
+	if c.Tracing.Endpoint == "" {
+		c.Tracing.Endpoint = "localhost:4317"
 	}
 }
 
