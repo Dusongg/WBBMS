@@ -17,29 +17,29 @@ func (s *StatisticsApi) GetStatistics(c *gin.Context) {
 
 	// 图书总数
 	var totalBooks int64
-	global.GVA_DB.Model(&model.Book{}).Count(&totalBooks)
+	global.DB(c.Request.Context()).Model(&model.Book{}).Count(&totalBooks)
 	stats["total_books"] = totalBooks
 
 	// 可借图书数
 	var availableBooks int64
-	global.GVA_DB.Model(&model.Book{}).Where("available_stock > 0").Count(&availableBooks)
+	global.DB(c.Request.Context()).Model(&model.Book{}).Where("available_stock > 0").Count(&availableBooks)
 	stats["available_books"] = availableBooks
 
 	// 读者总数
 	var totalReaders int64
-	global.GVA_DB.Model(&model.Reader{}).Where("status = ?", model.ReaderStatusActive).Count(&totalReaders)
+	global.DB(c.Request.Context()).Model(&model.Reader{}).Where("status = ?", model.ReaderStatusActive).Count(&totalReaders)
 	stats["total_readers"] = totalReaders
 
 	// 借阅中数量
 	var borrowingCount int64
-	global.GVA_DB.Model(&model.BorrowRecord{}).
+	global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Where("status IN (?)", []model.BorrowStatus{model.BorrowStatusBorrowed, model.BorrowStatusOverdue}).
 		Count(&borrowingCount)
 	stats["borrowing_count"] = borrowingCount
 
 	// 逾期数量
 	var overdueCount int64
-	global.GVA_DB.Model(&model.BorrowRecord{}).
+	global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Where("status = ? AND due_date < ?", model.BorrowStatusBorrowed, time.Now()).
 		Count(&overdueCount)
 	stats["overdue_count"] = overdueCount
@@ -48,14 +48,14 @@ func (s *StatisticsApi) GetStatistics(c *gin.Context) {
 	now := time.Now()
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 	var monthBorrowCount int64
-	global.GVA_DB.Model(&model.BorrowRecord{}).
+	global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Where("borrow_date >= ?", startOfMonth).
 		Count(&monthBorrowCount)
 	stats["month_borrow_count"] = monthBorrowCount
 
 	// 本月归还数量
 	var monthReturnCount int64
-	global.GVA_DB.Model(&model.BorrowRecord{}).
+	global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Where("return_date >= ?", startOfMonth).
 		Count(&monthReturnCount)
 	stats["month_return_count"] = monthReturnCount
@@ -87,7 +87,7 @@ func (s *StatisticsApi) GetBorrowStatistics(c *gin.Context) {
 	}
 
 	var records []model.BorrowRecord
-	global.GVA_DB.Where("borrow_date >= ? AND borrow_date <= ?", startDate, endDate).
+	global.DB(c.Request.Context()).Where("borrow_date >= ? AND borrow_date <= ?", startDate, endDate).
 		Preload("Book").Preload("Reader.User").
 		Find(&records)
 
@@ -103,7 +103,7 @@ func (s *StatisticsApi) GetPopularBooks(c *gin.Context) {
 		BorrowCount int64  `json:"borrow_count"`
 	}
 
-	global.GVA_DB.Model(&model.BorrowRecord{}).
+	global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Select("book_id, COUNT(*) as borrow_count").
 		Group("book_id").
 		Order("borrow_count DESC").
@@ -113,7 +113,7 @@ func (s *StatisticsApi) GetPopularBooks(c *gin.Context) {
 	// 填充图书信息
 	for i := range popularBooks {
 		var book model.Book
-		if err := global.GVA_DB.First(&book, popularBooks[i].BookID).Error; err == nil {
+		if err := global.DB(c.Request.Context()).First(&book, popularBooks[i].BookID).Error; err == nil {
 			popularBooks[i].Title = book.Title
 			popularBooks[i].Author = book.Author
 		}

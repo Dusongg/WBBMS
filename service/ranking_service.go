@@ -100,7 +100,7 @@ func (s *RankingService) GetRanking(ctx context.Context, rankingType model.Ranki
 
 		// 查询图书详情
 		var book model.Book
-		if err := global.GVA_DB.First(&book, bookID).Error; err == nil {
+		if err := global.DB(ctx).First(&book, bookID).Error; err == nil {
 			items = append(items, model.RankingItem{
 				Rank:   len(items) + 1,
 				BookID: uint(bookID),
@@ -151,7 +151,7 @@ func (s *RankingService) rebuildRanking(ctx context.Context, rankingType model.R
 
 	if rankingType == model.RankingTypeLike {
 		// 统计点赞数
-		if err := global.GVA_DB.Model(&model.BookLike{}).
+		if err := global.DB(ctx).Model(&model.BookLike{}).
 			Select("book_id, COUNT(*) as count").
 			Where("created_at BETWEEN ? AND ?", startTime, endTime).
 			Group("book_id").
@@ -162,7 +162,7 @@ func (s *RankingService) rebuildRanking(ctx context.Context, rankingType model.R
 		}
 	} else {
 		// 统计收藏数
-		if err := global.GVA_DB.Model(&model.BookFavorite{}).
+		if err := global.DB(ctx).Model(&model.BookFavorite{}).
 			Select("book_id, COUNT(*) as count").
 			Where("created_at BETWEEN ? AND ?", startTime, endTime).
 			Group("book_id").
@@ -257,7 +257,7 @@ func (s *RankingService) SyncBookStatsToRedis(ctx context.Context) error {
 
 	// 查询所有图书的统计数据
 	var books []model.Book
-	if err := global.GVA_DB.Select("id, like_count, favorite_count").Find(&books).Error; err != nil {
+	if err := global.DB(ctx).Select("id, like_count, favorite_count").Find(&books).Error; err != nil {
 		return err
 	}
 

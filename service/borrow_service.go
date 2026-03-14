@@ -3,6 +3,7 @@ package service
 import (
 	"bookadmin/global"
 	"bookadmin/model"
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -26,8 +27,8 @@ func NewBorrowService() *BorrowService {
 }
 
 // BorrowBook 借书（增强版）
-func (s *BorrowService) BorrowBook(userID, bookID uint, operatorID uint, reservationID *uint) (*model.BorrowRecord, error) {
-	tx := global.GVA_DB.Begin()
+func (s *BorrowService) BorrowBook(ctx context.Context, userID, bookID uint, operatorID uint, reservationID *uint) (*model.BorrowRecord, error) {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -52,11 +53,11 @@ func (s *BorrowService) BorrowBook(userID, bookID uint, operatorID uint, reserva
 			UnpaidFine:      0,
 			IsBlacklisted:   false,
 		}
-		if err := global.GVA_DB.Create(&reader).Error; err != nil {
+		if err := global.DB(ctx).Create(&reader).Error; err != nil {
 			return nil, errors.New("创建读者信息失败")
 		}
 		// 重新开始事务
-		tx = global.GVA_DB.Begin()
+		tx = global.DB(ctx).Begin()
 	}
 
 	if reader.Status != model.ReaderStatusActive {
@@ -83,7 +84,7 @@ func (s *BorrowService) BorrowBook(userID, bookID uint, operatorID uint, reserva
 		Count(&overdueCount)
 
 	if overdueCount > 0 {
-		blockDays := GlobalConfigService.GetIntConfig(model.ConfigOverdueBlockDays, 7)
+		blockDays := GlobalConfigService.GetIntConfig(ctx, model.ConfigOverdueBlockDays, 7)
 		tx.Rollback()
 		return nil, fmt.Errorf("您有图书逾期未还，超过%d天将禁止借书", blockDays)
 	}
@@ -141,7 +142,7 @@ func (s *BorrowService) BorrowBook(userID, bookID uint, operatorID uint, reserva
 		}).
 		Count(&borrowCount)
 
-	maxBorrow := GlobalConfigService.GetIntConfig(model.ConfigMaxBorrowBooks, reader.MaxBorrow)
+	maxBorrow := GlobalConfigService.GetIntConfig(ctx, model.ConfigMaxBorrowBooks, reader.MaxBorrow)
 	if int(borrowCount) >= maxBorrow {
 		tx.Rollback()
 		return nil, errors.New("已达到最大借阅数量")
@@ -188,8 +189,8 @@ func (s *BorrowService) BorrowBook(userID, bookID uint, operatorID uint, reserva
 
 	// 10. 创建借阅记录
 	now := time.Now()
-	borrowDays := GlobalConfigService.GetIntConfig(model.ConfigBorrowDays, reader.BorrowDays)
-	maxRenewCount := GlobalConfigService.GetIntConfig(model.ConfigMaxRenewTimes, reader.MaxRenew)
+	borrowDays := GlobalConfigService.GetIntConfig(ctx, model.ConfigBorrowDays, reader.BorrowDays)
+	maxRenewCount := GlobalConfigService.GetIntConfig(ctx, model.ConfigMaxRenewTimes, reader.MaxRenew)
 
 	// 测试模式：借阅期限改为1分钟
 	// 生产环境：使用天数
@@ -253,8 +254,8 @@ func (s *BorrowService) BorrowBook(userID, bookID uint, operatorID uint, reserva
 }
 
 // ApproveBorrowRequest 审批借阅申请
-func (s *BorrowService) ApproveBorrowRequest(recordID uint, operatorID uint, approved bool, rejectReason string) error {
-	tx := global.GVA_DB.Begin()
+func (s *BorrowService) ApproveBorrowRequest(ctx context.Context, recordID uint, operatorID uint, approved bool, rejectReason string) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -326,8 +327,8 @@ func (s *BorrowService) ApproveBorrowRequest(recordID uint, operatorID uint, app
 }
 
 // CancelBorrowRequest 取消借阅申请（用户自己取消）
-func (s *BorrowService) CancelBorrowRequest(recordID uint, userID uint) error {
-	tx := global.GVA_DB.Begin()
+func (s *BorrowService) CancelBorrowRequest(ctx context.Context, recordID uint, userID uint) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -371,8 +372,8 @@ func (s *BorrowService) CancelBorrowRequest(recordID uint, userID uint) error {
 }
 
 // ReturnBook 还书（增强版）
-func (s *BorrowService) ReturnBook(recordID uint, operatorID uint) (*model.BorrowRecord, float64, error) {
-	tx := global.GVA_DB.Begin()
+func (s *BorrowService) ReturnBook(ctx context.Context, recordID uint, operatorID uint) (*model.BorrowRecord, float64, error) {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -392,7 +393,7 @@ func (s *BorrowService) ReturnBook(recordID uint, operatorID uint) (*model.Borro
 	}
 
 	// 2. 计算罚款
-	fineAmount, overdueDays, err := s.fineService.CalculateOverdueFine(&record)
+	fineAmount, overdueDays, err := s.fineService.CalculateOverdueFine(ctx, &record)
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -439,7 +440,7 @@ func (s *BorrowService) ReturnBook(recordID uint, operatorID uint) (*model.Borro
 		var existingFine model.FineRecord
 		if err := tx.Where("borrow_record_id = ?", recordID).First(&existingFine).Error; err != nil {
 			// 罚款记录不存在，创建新的罚款记录
-			if err := s.fineService.CreateFineRecord(record.ReaderID, record.ID, "overdue", fineAmount, overdueDays, operatorID); err != nil {
+			if err := s.fineService.CreateFineRecord(ctx, record.ReaderID, record.ID, "overdue", fineAmount, overdueDays, operatorID); err != nil {
 				global.GVA_LOG.Error("创建罚款记录失败", zap.Error(err))
 				// 不回滚，允许还书成功但罚款记录创建失败
 			}
@@ -463,7 +464,7 @@ func (s *BorrowService) ReturnBook(recordID uint, operatorID uint) (*model.Borro
 
 	// 6. 检查并通知预约者
 	go func() {
-		if err := s.reservationService.CheckAndNotifyAvailableReservations(record.BookID); err != nil {
+		if err := s.reservationService.CheckAndNotifyAvailableReservations(ctx, record.BookID); err != nil {
 			global.GVA_LOG.Error("通知预约者失败", zap.Error(err))
 		}
 	}()
@@ -477,8 +478,8 @@ func (s *BorrowService) ReturnBook(recordID uint, operatorID uint) (*model.Borro
 }
 
 // RenewBook 续借（增强版）
-func (s *BorrowService) RenewBook(recordID, readerID uint) error {
-	tx := global.GVA_DB.Begin()
+func (s *BorrowService) RenewBook(ctx context.Context, recordID, readerID uint) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -531,7 +532,7 @@ func (s *BorrowService) RenewBook(recordID, readerID uint) error {
 	}
 
 	// 7. 更新借阅记录
-	renewDays := GlobalConfigService.GetIntConfig(model.ConfigRenewDays, record.Reader.RenewDays)
+	renewDays := GlobalConfigService.GetIntConfig(ctx, model.ConfigRenewDays, record.Reader.RenewDays)
 	record.DueDate = record.DueDate.AddDate(0, 0, renewDays)
 	record.RenewCount++
 
@@ -552,11 +553,12 @@ func (s *BorrowService) RenewBook(recordID, readerID uint) error {
 // CheckOverdueRecords 检查并更新逾期记录
 // 定时任务调用
 func (s *BorrowService) CheckOverdueRecords() error {
+	ctx := context.Background()
 	// 查找所有未归还且已过期的借阅记录
 	now := time.Now()
 	var overdueRecords []model.BorrowRecord
 
-	if err := global.GVA_DB.Where("status = ? AND due_date < ?", model.BorrowStatusBorrowed, now).
+	if err := global.DB(ctx).Where("status = ? AND due_date < ?", model.BorrowStatusBorrowed, now).
 		Find(&overdueRecords).Error; err != nil {
 		return err
 	}
@@ -571,7 +573,7 @@ func (s *BorrowService) CheckOverdueRecords() error {
 		recordIDs[i] = r.ID
 	}
 
-	if err := global.GVA_DB.Model(&model.BorrowRecord{}).
+	if err := global.DB(ctx).Model(&model.BorrowRecord{}).
 		Where("id IN ?", recordIDs).
 		Update("status", model.BorrowStatusOverdue).Error; err != nil {
 		return err
@@ -583,7 +585,7 @@ func (s *BorrowService) CheckOverdueRecords() error {
 	messageService := &MessageService{}
 	for _, record := range overdueRecords {
 		// 预加载读者和图书信息
-		if err := global.GVA_DB.Preload("Reader").Preload("Book").First(&record, record.ID).Error; err != nil {
+		if err := global.DB(ctx).Preload("Reader").Preload("Book").First(&record, record.ID).Error; err != nil {
 			global.GVA_LOG.Error("预加载借阅记录失败", zap.Error(err))
 			continue
 		}
@@ -614,6 +616,7 @@ func (s *BorrowService) CheckOverdueRecords() error {
 
 		relatedID := record.ID
 		if err := messageService.CreateMessage(
+			ctx,
 			record.Reader.UserID,
 			model.MessageTypeOverdue,
 			title,
@@ -636,8 +639,9 @@ func (s *BorrowService) CheckOverdueRecords() error {
 // SendDueReminders 发送到期提醒
 // 定时任务调用
 func (s *BorrowService) SendDueReminders() error {
+	ctx := context.Background()
 	// 获取提醒天数配置
-	reminderDays := GlobalConfigService.GetIntConfig(model.ConfigOverdueReminderDays, 3)
+	reminderDays := GlobalConfigService.GetIntConfig(ctx, model.ConfigOverdueReminderDays, 3)
 
 	// 查找即将到期的借阅记录
 	// 测试模式：提前30秒提醒
@@ -654,7 +658,7 @@ func (s *BorrowService) SendDueReminders() error {
 	}
 
 	var dueRecords []model.BorrowRecord
-	if err := global.GVA_DB.Where("status = ? AND due_date >= ? AND due_date < ?",
+	if err := global.DB(ctx).Where("status = ? AND due_date >= ? AND due_date < ?",
 		model.BorrowStatusBorrowed, startDate, endDate).
 		Preload("Reader").
 		Preload("Book").
@@ -670,6 +674,7 @@ func (s *BorrowService) SendDueReminders() error {
 
 		relatedID := record.ID
 		if err := messageService.CreateMessage(
+			ctx,
 			record.Reader.UserID,
 			model.MessageTypeBorrow,
 			title,

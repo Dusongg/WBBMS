@@ -28,13 +28,13 @@ func (f *FineApi) GetMyFines(c *gin.Context) {
 
 	// 查找读者ID
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者信息不存在"))
 		return
 	}
 
 	// 获取罚款列表
-	fines, err := fineService.GetReaderUnpaidFines(reader.ID)
+	fines, err := fineService.GetReaderUnpaidFines(c.Request.Context(), reader.ID)
 	if err != nil {
 		global.GVA_LOG.Error("获取罚款列表失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("获取罚款列表失败"))
@@ -61,7 +61,7 @@ func (f *FineApi) GetFineList(c *gin.Context) {
 
 	var fines []model.FineRecord
 	var total int64
-	db := global.GVA_DB.Model(&model.FineRecord{}).
+	db := global.DB(c.Request.Context()).Model(&model.FineRecord{}).
 		Preload("Reader").
 		Preload("Reader.User").
 		Preload("BorrowRecord").
@@ -124,7 +124,7 @@ func (f *FineApi) PayFine(c *gin.Context) {
 	}
 
 	// 支付罚款
-	if err := fineService.PayFine(req.FineID, req.PaidAmount, opID); err != nil {
+	if err := fineService.PayFine(c.Request.Context(), req.FineID, req.PaidAmount, opID); err != nil {
 		global.GVA_LOG.Error("支付罚款失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -155,7 +155,7 @@ func (f *FineApi) WaiveFine(c *gin.Context) {
 	}
 
 	// 豁免罚款
-	if err := fineService.WaiveFine(uint(fineID), opID, req.Remark); err != nil {
+	if err := fineService.WaiveFine(c.Request.Context(), uint(fineID), opID, req.Remark); err != nil {
 		global.GVA_LOG.Error("豁免罚款失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return

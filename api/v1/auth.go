@@ -28,7 +28,7 @@ func (a *AuthApi) Login(c *gin.Context) {
 
 	// 查找用户
 	var user model.User
-	if err := global.GVA_DB.Where("username = ?", req.Username).First(&user).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("username = ?", req.Username).First(&user).Error; err != nil {
 		global.GVA_LOG.Error("用户不存在", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("用户名或密码错误"))
 		return
@@ -41,7 +41,7 @@ func (a *AuthApi) Login(c *gin.Context) {
 
 	if user.Password == req.Password {
 		if hashedPassword, err := utils.HashPassword(req.Password); err == nil {
-			global.GVA_DB.Model(&user).Update("password", hashedPassword)
+			global.DB(c.Request.Context()).Model(&user).Update("password", hashedPassword)
 			user.Password = hashedPassword
 		}
 	}
@@ -89,7 +89,7 @@ func (a *AuthApi) Register(c *gin.Context) {
 
 	// 检查用户名是否已存在
 	var existUser model.User
-	if err := global.GVA_DB.Where("username = ?", req.Username).First(&existUser).Error; err == nil {
+	if err := global.DB(c.Request.Context()).Where("username = ?", req.Username).First(&existUser).Error; err == nil {
 		c.JSON(200, response.FailWithMessage("用户名已存在"))
 		return
 	}
@@ -112,7 +112,7 @@ func (a *AuthApi) Register(c *gin.Context) {
 	}
 	user.Password = hashedPassword
 
-	if err := global.GVA_DB.Create(&user).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Create(&user).Error; err != nil {
 		global.GVA_LOG.Error("创建用户失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("注册失败"))
 		return
@@ -132,10 +132,10 @@ func (a *AuthApi) Register(c *gin.Context) {
 		BorrowDays: 30,
 	}
 
-	if err := global.GVA_DB.Create(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Create(&reader).Error; err != nil {
 		global.GVA_LOG.Error("创建读者失败", zap.Error(err))
 		// 删除已创建的用户
-		global.GVA_DB.Delete(&user)
+		global.DB(c.Request.Context()).Delete(&user)
 		c.JSON(200, response.FailWithMessage("注册失败"))
 		return
 	}
@@ -152,7 +152,7 @@ func (a *AuthApi) GetUserInfo(c *gin.Context) {
 	}
 
 	var user model.User
-	if err := global.GVA_DB.Preload("Reader").First(&user, userID).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Preload("Reader").First(&user, userID).Error; err != nil {
 		global.GVA_LOG.Error("获取用户信息失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("获取用户信息失败"))
 		return

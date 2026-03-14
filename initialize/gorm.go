@@ -5,6 +5,7 @@ import (
 	"bookadmin/model"
 	"bookadmin/observability"
 	"bookadmin/service"
+	"context"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -82,7 +83,7 @@ func InitSystemConfigs(db *gorm.DB) {
 // InitConfigCache 初始化配置缓存
 func InitConfigCache() {
 	// 刷新配置缓存
-	if err := service.GlobalConfigService.RefreshCache(); err != nil {
+	if err := service.GlobalConfigService.RefreshCache(context.Background()); err != nil {
 		global.GVA_LOG.Error("配置缓存初始化失败", zap.Error(err))
 	} else {
 		global.GVA_LOG.Info("配置缓存初始化成功")

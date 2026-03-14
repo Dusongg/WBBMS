@@ -3,6 +3,7 @@ package service
 import (
 	"bookadmin/global"
 	"bookadmin/model"
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -13,8 +14,8 @@ import (
 type BlacklistService struct{}
 
 // AddToBlacklist 添加到黑名单
-func (s *BlacklistService) AddToBlacklist(readerID uint, reason model.BlacklistReason, description string, endDate *time.Time, operatorID uint) error {
-	tx := global.GVA_DB.Begin()
+func (s *BlacklistService) AddToBlacklist(ctx context.Context, readerID uint, reason model.BlacklistReason, description string, endDate *time.Time, operatorID uint) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -64,7 +65,7 @@ func (s *BlacklistService) AddToBlacklist(readerID uint, reason model.BlacklistR
 		if description != "" {
 			content += " 原因说明：" + description
 		}
-		_ = (&MessageService{}).CreateMessage(reader.UserID, model.MessageTypeSystem, title, content, nil, "blacklist")
+		_ = (&MessageService{}).CreateMessage(ctx, reader.UserID, model.MessageTypeSystem, title, content, nil, "blacklist")
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -76,8 +77,8 @@ func (s *BlacklistService) AddToBlacklist(readerID uint, reason model.BlacklistR
 }
 
 // RemoveActiveBlacklistByUserID 通过用户ID解除该用户的所有生效黑名单
-func (s *BlacklistService) RemoveActiveBlacklistByUserID(userID uint, operatorID uint, remark string) error {
-	tx := global.GVA_DB.Begin()
+func (s *BlacklistService) RemoveActiveBlacklistByUserID(ctx context.Context, userID uint, operatorID uint, remark string) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -131,6 +132,7 @@ func (s *BlacklistService) RemoveActiveBlacklistByUserID(userID uint, operatorID
 
 	// 发送站内通知（失败不影响主流程）
 	_ = (&MessageService{}).CreateMessage(
+		ctx,
 		userID,
 		model.MessageTypeSystem,
 		"✅ 黑名单已解除",
@@ -146,8 +148,8 @@ func (s *BlacklistService) RemoveActiveBlacklistByUserID(userID uint, operatorID
 }
 
 // RemoveFromBlacklist 从黑名单移除（解禁）
-func (s *BlacklistService) RemoveFromBlacklist(blacklistID uint, operatorID uint, remark string) error {
-	tx := global.GVA_DB.Begin()
+func (s *BlacklistService) RemoveFromBlacklist(ctx context.Context, blacklistID uint, operatorID uint, remark string) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -207,14 +209,15 @@ func (s *BlacklistService) RemoveFromBlacklist(blacklistID uint, operatorID uint
 // CheckAndAddOverdueBlacklist 检查并自动拉黑逾期严重的读者
 // 定时任务调用
 func (s *BlacklistService) CheckAndAddOverdueBlacklist() error {
+	ctx := context.Background()
 	// 获取配置
-	blacklistDays := GlobalConfigService.GetIntConfig(model.ConfigOverdueBlacklistDays, 30)
+	blacklistDays := GlobalConfigService.GetIntConfig(ctx, model.ConfigOverdueBlacklistDays, 30)
 
 	// 查找逾期超过指定天数的借阅记录
 	var overdueRecords []model.BorrowRecord
 	cutoffDate := time.Now().AddDate(0, 0, -blacklistDays)
 
-	if err := global.GVA_DB.Where("status IN (?) AND due_date < ?",
+	if err := global.DB(ctx).Where("status IN (?) AND due_date < ?",
 		[]model.BorrowStatus{model.BorrowStatusBorrowed, model.BorrowStatusOverdue}, cutoffDate).
 		Preload("Reader").
 		Preload("Book").
@@ -240,7 +243,7 @@ func (s *BlacklistService) CheckAndAddOverdueBlacklist() error {
 
 		// 添加到黑名单
 		description := fmt.Sprintf("借阅《%s》逾期%d天未还", record.Book.Title, overdueDays)
-		if err := s.AddToBlacklist(record.ReaderID, model.BlacklistReasonOverdue, description, nil, 0); err != nil {
+		if err := s.AddToBlacklist(context.Background(), record.ReaderID, model.BlacklistReasonOverdue, description, nil, 0); err != nil {
 			global.GVA_LOG.Error("自动拉黑失败", zap.Error(err), zap.Uint("reader_id", record.ReaderID))
 			continue
 		}
@@ -254,11 +257,12 @@ func (s *BlacklistService) CheckAndAddOverdueBlacklist() error {
 // CheckExpiredBlacklist 检查并处理过期的黑名单
 // 定时任务调用
 func (s *BlacklistService) CheckExpiredBlacklist() error {
+	ctx := context.Background()
 	now := time.Now()
 
 	// 查找所有过期的黑名单
 	var expiredBlacklists []model.Blacklist
-	if err := global.GVA_DB.Where("status = ? AND end_date IS NOT NULL AND end_date < ?",
+	if err := global.DB(ctx).Where("status = ? AND end_date IS NOT NULL AND end_date < ?",
 		model.BlacklistStatusActive, now).
 		Find(&expiredBlacklists).Error; err != nil {
 		return err
@@ -277,7 +281,7 @@ func (s *BlacklistService) CheckExpiredBlacklist() error {
 		readerIDs[bl.ReaderID] = true
 	}
 
-	if err := global.GVA_DB.Model(&model.Blacklist{}).
+	if err := global.DB(ctx).Model(&model.Blacklist{}).
 		Where("id IN ?", blacklistIDs).
 		Update("status", model.BlacklistStatusExpired).Error; err != nil {
 		return err
@@ -286,13 +290,13 @@ func (s *BlacklistService) CheckExpiredBlacklist() error {
 	// 对于每个读者，检查是否还有其他生效中的黑名单
 	for readerID := range readerIDs {
 		var activeCount int64
-		global.GVA_DB.Model(&model.Blacklist{}).
+		global.DB(ctx).Model(&model.Blacklist{}).
 			Where("reader_id = ? AND status = ?", readerID, model.BlacklistStatusActive).
 			Count(&activeCount)
 
 		// 如果没有其他黑名单，解除读者的黑名单状态
 		if activeCount == 0 {
-			global.GVA_DB.Model(&model.Reader{}).Where("id = ?", readerID).
+			global.DB(ctx).Model(&model.Reader{}).Where("id = ?", readerID).
 				Updates(map[string]interface{}{
 					"is_blacklisted": false,
 					"status":         model.ReaderStatusActive,
@@ -305,9 +309,9 @@ func (s *BlacklistService) CheckExpiredBlacklist() error {
 }
 
 // GetReaderBlacklists 获取读者的黑名单记录
-func (s *BlacklistService) GetReaderBlacklists(readerID uint) ([]model.Blacklist, error) {
+func (s *BlacklistService) GetReaderBlacklists(ctx context.Context, readerID uint) ([]model.Blacklist, error) {
 	var blacklists []model.Blacklist
-	if err := global.GVA_DB.Where("reader_id = ?", readerID).
+	if err := global.DB(ctx).Where("reader_id = ?", readerID).
 		Order("created_at DESC").
 		Find(&blacklists).Error; err != nil {
 		return nil, err

@@ -38,7 +38,7 @@ func (r *ReservationApi) CreateReservation(c *gin.Context) {
 
 	// 查找或创建读者记录
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		// 如果读者不存在，自动创建
 		reader = model.Reader{
 			UserID:          userID,
@@ -53,14 +53,14 @@ func (r *ReservationApi) CreateReservation(c *gin.Context) {
 			UnpaidFine:      0,
 			IsBlacklisted:   false,
 		}
-		if err := global.GVA_DB.Create(&reader).Error; err != nil {
+		if err := global.DB(c.Request.Context()).Create(&reader).Error; err != nil {
 			c.JSON(200, response.FailWithMessage("创建读者信息失败"))
 			return
 		}
 	}
 
 	// 创建预约
-	reservation, err := reservationService.CreateReservation(reader.ID, req.BookID)
+	reservation, err := reservationService.CreateReservation(c.Request.Context(), reader.ID, req.BookID)
 	if err != nil {
 		global.GVA_LOG.Error("创建预约失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
@@ -93,13 +93,13 @@ func (r *ReservationApi) CancelReservation(c *gin.Context) {
 
 	// 查找读者ID
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者信息不存在"))
 		return
 	}
 
 	// 取消预约
-	if err := reservationService.CancelReservation(uint(reservationID), reader.ID); err != nil {
+	if err := reservationService.CancelReservation(c.Request.Context(), uint(reservationID), reader.ID); err != nil {
 		global.GVA_LOG.Error("取消预约失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -120,13 +120,13 @@ func (r *ReservationApi) GetMyReservations(c *gin.Context) {
 
 	// 查找读者ID
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者信息不存在"))
 		return
 	}
 
 	// 获取预约列表
-	reservations, err := reservationService.GetReaderReservations(reader.ID)
+	reservations, err := reservationService.GetReaderReservations(c.Request.Context(), reader.ID)
 	if err != nil {
 		global.GVA_LOG.Error("获取预约列表失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("获取预约列表失败"))
@@ -152,7 +152,7 @@ func (r *ReservationApi) GetReservationList(c *gin.Context) {
 
 	var reservations []model.Reservation
 	var total int64
-	db := global.GVA_DB.Model(&model.Reservation{}).
+	db := global.DB(c.Request.Context()).Model(&model.Reservation{}).
 		Preload("Reader").
 		Preload("Reader.User").
 		Preload("Book")

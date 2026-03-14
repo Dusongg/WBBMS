@@ -3,6 +3,7 @@ package service
 import (
 	"bookadmin/global"
 	"bookadmin/model"
+	"context"
 	"errors"
 	"time"
 
@@ -22,9 +23,9 @@ func NewReservationService() *ReservationService {
 }
 
 // CreateReservation 创建预约
-func (s *ReservationService) CreateReservation(readerID, bookID uint) (*model.Reservation, error) {
+func (s *ReservationService) CreateReservation(ctx context.Context, readerID, bookID uint) (*model.Reservation, error) {
 	// 开始事务
-	tx := global.GVA_DB.Begin()
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -58,7 +59,7 @@ func (s *ReservationService) CreateReservation(readerID, bookID uint) (*model.Re
 		}).
 		Count(&reservationCount)
 
-	maxReservations := GlobalConfigService.GetIntConfig(model.ConfigMaxReservations, reader.MaxReservations)
+	maxReservations := GlobalConfigService.GetIntConfig(ctx, model.ConfigMaxReservations, reader.MaxReservations)
 	if int(reservationCount) >= maxReservations {
 		tx.Rollback()
 		return nil, errors.New("已达到最大预约数量")
@@ -123,8 +124,8 @@ func (s *ReservationService) CreateReservation(readerID, bookID uint) (*model.Re
 }
 
 // CancelReservation 取消预约
-func (s *ReservationService) CancelReservation(reservationID, readerID uint) error {
-	tx := global.GVA_DB.Begin()
+func (s *ReservationService) CancelReservation(ctx context.Context, reservationID, readerID uint) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -178,10 +179,10 @@ func (s *ReservationService) CancelReservation(reservationID, readerID uint) err
 
 // CheckAndNotifyAvailableReservations 检查并通知可取书的预约
 // 当图书归还时调用
-func (s *ReservationService) CheckAndNotifyAvailableReservations(bookID uint) error {
+func (s *ReservationService) CheckAndNotifyAvailableReservations(ctx context.Context, bookID uint) error {
 	// 查找该书的第一个pending预约，同时加载关联的Reader和Book信息
 	var reservation model.Reservation
-	if err := global.GVA_DB.Preload("Reader").Preload("Book").
+	if err := global.DB(ctx).Preload("Reader").Preload("Book").
 		Where("book_id = ? AND status = ?", bookID, model.ReservationStatusPending).
 		Order("queue_position ASC").
 		First(&reservation).Error; err != nil {
@@ -191,7 +192,7 @@ func (s *ReservationService) CheckAndNotifyAvailableReservations(bookID uint) er
 
 	// 检查图书是否有可用库存
 	var book model.Book
-	if err := global.GVA_DB.First(&book, bookID).Error; err != nil {
+	if err := global.DB(ctx).First(&book, bookID).Error; err != nil {
 		return err
 	}
 
@@ -202,10 +203,10 @@ func (s *ReservationService) CheckAndNotifyAvailableReservations(bookID uint) er
 
 	// 更新预约状态为可取书
 	now := time.Now()
-	pickupDays := GlobalConfigService.GetIntConfig(model.ConfigReservationPickupDays, 3)
+	pickupDays := GlobalConfigService.GetIntConfig(ctx, model.ConfigReservationPickupDays, 3)
 	pickupDeadline := now.AddDate(0, 0, pickupDays)
 
-	if err := global.GVA_DB.Model(&reservation).Updates(map[string]interface{}{
+	if err := global.DB(ctx).Model(&reservation).Updates(map[string]interface{}{
 		"status":          model.ReservationStatusAvailable,
 		"available_date":  now,
 		"pickup_deadline": pickupDeadline,
@@ -218,6 +219,7 @@ func (s *ReservationService) CheckAndNotifyAvailableReservations(bookID uint) er
 	if reservation.Reader.UserID > 0 {
 		bookTitle := reservation.Book.Title
 		if err := s.messageService.SendReservationAvailableMessage(
+			ctx,
 			reservation.Reader.UserID,
 			bookTitle,
 			reservation.ID,
@@ -236,10 +238,11 @@ func (s *ReservationService) CheckAndNotifyAvailableReservations(bookID uint) er
 // CheckExpiredReservations 检查并处理过期的预约
 // 定时任务调用
 func (s *ReservationService) CheckExpiredReservations() error {
+	ctx := context.Background()
 	// 查找所有过期的available预约
 	now := time.Now()
 	var expiredReservations []model.Reservation
-	if err := global.GVA_DB.Where("status = ? AND pickup_deadline < ?",
+	if err := global.DB(ctx).Where("status = ? AND pickup_deadline < ?",
 		model.ReservationStatusAvailable, now).
 		Find(&expiredReservations).Error; err != nil {
 		return err
@@ -255,7 +258,7 @@ func (s *ReservationService) CheckExpiredReservations() error {
 		reservationIDs[i] = r.ID
 	}
 
-	if err := global.GVA_DB.Model(&model.Reservation{}).
+	if err := global.DB(ctx).Model(&model.Reservation{}).
 		Where("id IN ?", reservationIDs).
 		Updates(map[string]interface{}{
 			"status":         model.ReservationStatusExpired,
@@ -273,16 +276,16 @@ func (s *ReservationService) CheckExpiredReservations() error {
 	}
 
 	for bookID := range bookIDs {
-		s.CheckAndNotifyAvailableReservations(bookID)
+		s.CheckAndNotifyAvailableReservations(ctx, bookID)
 	}
 
 	return nil
 }
 
 // GetReaderReservations 获取读者的预约列表
-func (s *ReservationService) GetReaderReservations(readerID uint, status ...model.ReservationStatus) ([]model.Reservation, error) {
+func (s *ReservationService) GetReaderReservations(ctx context.Context, readerID uint, status ...model.ReservationStatus) ([]model.Reservation, error) {
 	var reservations []model.Reservation
-	query := global.GVA_DB.Where("reader_id = ?", readerID).
+	query := global.DB(ctx).Where("reader_id = ?", readerID).
 		Preload("Book").
 		Order("created_at DESC")
 

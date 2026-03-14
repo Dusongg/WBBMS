@@ -28,7 +28,7 @@ func (b *BookApi) CreateBook(c *gin.Context) {
 	}
 
 	// 开始事务
-	tx := global.GVA_DB.Begin()
+	tx := global.DB(c.Request.Context()).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -79,7 +79,7 @@ func (b *BookApi) DeleteBook(c *gin.Context) {
 		return
 	}
 
-	if err := global.GVA_DB.Delete(&model.Book{}, req.ID).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Delete(&model.Book{}, req.ID).Error; err != nil {
 		global.GVA_LOG.Error("删除失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("删除失败: "+err.Error()))
 		return
@@ -123,7 +123,7 @@ func (b *BookApi) UpdateBook(c *gin.Context) {
 
 	// 检查图书是否存在（排除软删除的记录）
 	var existBook model.Book
-	if err := global.GVA_DB.Where("id = ?", bookID).First(&existBook).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("id = ?", bookID).First(&existBook).Error; err != nil {
 		global.GVA_LOG.Error("图书不存在", zap.Uint("id", bookID), zap.Error(err))
 		c.JSON(200, response.FailWithMessage("图书不存在"))
 		return
@@ -133,7 +133,7 @@ func (b *BookApi) UpdateBook(c *gin.Context) {
 	oldAvailableStock := existBook.AvailableStock
 
 	// 开始事务
-	tx := global.GVA_DB.Begin()
+	tx := global.DB(c.Request.Context()).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -191,13 +191,13 @@ func (b *BookApi) UpdateBook(c *gin.Context) {
 	// 检测库存变化：如果从0变为>0，检查并通知预约者
 	// 重新查询更新后的实际库存值，确保准确性
 	var updatedBook model.Book
-	if err := global.GVA_DB.First(&updatedBook, bookID).Error; err == nil {
+	if err := global.DB(c.Request.Context()).First(&updatedBook, bookID).Error; err == nil {
 		// 如果原来库存是0，现在库存>0，说明有库存补充
 		if oldAvailableStock == 0 && updatedBook.AvailableStock > 0 {
 			// 异步处理预约通知，不影响更新响应
 			go func() {
 				reservationService := service.NewReservationService()
-				if err := reservationService.CheckAndNotifyAvailableReservations(bookID); err != nil {
+				if err := reservationService.CheckAndNotifyAvailableReservations(c.Request.Context(), bookID); err != nil {
 					global.GVA_LOG.Error("通知预约者失败", zap.Uint("book_id", bookID), zap.Error(err))
 				} else {
 					global.GVA_LOG.Info("库存补充，已通知预约者",
@@ -222,7 +222,7 @@ func (b *BookApi) GetBook(c *gin.Context) {
 	}
 
 	var book model.Book
-	if err := global.GVA_DB.Preload("Categories").First(&book, req.ID).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Preload("Categories").First(&book, req.ID).Error; err != nil {
 		global.GVA_LOG.Error("获取失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("获取失败: "+err.Error()))
 		return
@@ -246,7 +246,7 @@ func (b *BookApi) GetBookList(c *gin.Context) {
 
 	var books []model.Book
 	var total int64
-	db := global.GVA_DB.Model(&model.Book{})
+	db := global.DB(c.Request.Context()).Model(&model.Book{})
 
 	// 搜索功能
 	if pageInfo.Keyword != "" {
@@ -288,7 +288,7 @@ func (b *BookApi) DeleteBookById(c *gin.Context) {
 		return
 	}
 
-	if err := global.GVA_DB.Delete(&model.Book{}, id).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Delete(&model.Book{}, id).Error; err != nil {
 		global.GVA_LOG.Error("删除失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("删除失败: "+err.Error()))
 		return

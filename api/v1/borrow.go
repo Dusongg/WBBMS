@@ -51,7 +51,7 @@ func (b *BorrowApi) BorrowBook(c *gin.Context) {
 	}
 
 	// 调用增强的借书服务（传递UserID）
-	record, err := borrowService.BorrowBook(targetUserID, req.BookID, userID, req.ReservationID)
+	record, err := borrowService.BorrowBook(c.Request.Context(), targetUserID, req.BookID, userID, req.ReservationID)
 	if err != nil {
 		global.GVA_LOG.Error("借书失败", zap.Error(err))
 
@@ -106,7 +106,7 @@ func (b *BorrowApi) ApproveBorrowRequest(c *gin.Context) {
 	userID := userIDInterface.(uint)
 
 	// 调用审批服务
-	if err := borrowService.ApproveBorrowRequest(req.RecordID, userID, req.Approved, req.RejectReason); err != nil {
+	if err := borrowService.ApproveBorrowRequest(c.Request.Context(), req.RecordID, userID, req.Approved, req.RejectReason); err != nil {
 		global.GVA_LOG.Error("审批借阅申请失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -139,7 +139,7 @@ func (b *BorrowApi) CancelBorrowRequest(c *gin.Context) {
 	userID := userIDInterface.(uint)
 
 	// 调用取消服务
-	if err := borrowService.CancelBorrowRequest(req.RecordID, userID); err != nil {
+	if err := borrowService.CancelBorrowRequest(c.Request.Context(), req.RecordID, userID); err != nil {
 		global.GVA_LOG.Error("取消借阅申请失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -179,7 +179,7 @@ func (b *BorrowApi) ReturnBook(c *gin.Context) {
 	userID := userIDInterface.(uint)
 
 	// 调用增强的还书服务
-	record, fineAmount, err := borrowService.ReturnBook(recordID, userID)
+	record, fineAmount, err := borrowService.ReturnBook(c.Request.Context(), recordID, userID)
 	if err != nil {
 		global.GVA_LOG.Error("还书失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
@@ -220,13 +220,13 @@ func (b *BorrowApi) RenewBook(c *gin.Context) {
 
 	// 查找读者ID
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者信息不存在"))
 		return
 	}
 
 	// 调用增强的续借服务
-	if err := borrowService.RenewBook(req.RecordID, reader.ID); err != nil {
+	if err := borrowService.RenewBook(c.Request.Context(), req.RecordID, reader.ID); err != nil {
 		global.GVA_LOG.Error("续借失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -249,7 +249,7 @@ func (b *BorrowApi) GetBorrowList(c *gin.Context) {
 
 	var records []model.BorrowRecord
 	var total int64
-	db := global.GVA_DB.Model(&model.BorrowRecord{}).Preload("Reader.User").Preload("Book")
+	db := global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).Preload("Reader.User").Preload("Book")
 
 	// 搜索功能
 	if pageInfo.Keyword != "" {
@@ -305,7 +305,7 @@ func (b *BorrowApi) GetMyBorrowList(c *gin.Context) {
 
 	// 查找读者的ID
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		// 如果读者不存在，返回空列表（新用户还没有借阅记录）
 		c.JSON(200, response.OkWithDetailed(response.PageResult{
 			List:     []model.BorrowRecord{},
@@ -318,7 +318,7 @@ func (b *BorrowApi) GetMyBorrowList(c *gin.Context) {
 
 	var records []model.BorrowRecord
 	var total int64
-	db := global.GVA_DB.Model(&model.BorrowRecord{}).
+	db := global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Where("reader_id = ?", reader.ID).
 		Preload("Book").
 		Preload("Book.Categories")
@@ -363,7 +363,7 @@ func (b *BorrowApi) GetBorrowStatistics(c *gin.Context) {
 
 	// 查找读者的ID
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		// 如果读者不存在，返回默认统计数据（新用户）
 		c.JSON(200, response.OkWithData(gin.H{
 			"borrowing_count":    0,
@@ -380,7 +380,7 @@ func (b *BorrowApi) GetBorrowStatistics(c *gin.Context) {
 
 	// 统计借阅中的图书
 	var borrowingCount int64
-	global.GVA_DB.Model(&model.BorrowRecord{}).
+	global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Where("reader_id = ? AND status IN (?)", reader.ID, []model.BorrowStatus{
 			model.BorrowStatusBorrowed,
 			model.BorrowStatusOverdue,
@@ -389,19 +389,19 @@ func (b *BorrowApi) GetBorrowStatistics(c *gin.Context) {
 
 	// 统计逾期的图书
 	var overdueCount int64
-	global.GVA_DB.Model(&model.BorrowRecord{}).
+	global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Where("reader_id = ? AND status = ?", reader.ID, model.BorrowStatusOverdue).
 		Count(&overdueCount)
 
 	// 统计历史借阅总数
 	var totalBorrowCount int64
-	global.GVA_DB.Model(&model.BorrowRecord{}).
+	global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Where("reader_id = ?", reader.ID).
 		Count(&totalBorrowCount)
 
 	// 统计预约数量
 	var reservationCount int64
-	global.GVA_DB.Model(&model.Reservation{}).
+	global.DB(c.Request.Context()).Model(&model.Reservation{}).
 		Where("reader_id = ? AND status IN (?)", reader.ID, []model.ReservationStatus{
 			model.ReservationStatusPending,
 			model.ReservationStatusAvailable,
@@ -448,7 +448,7 @@ func (b *BorrowApi) GetBookBorrowTrend(c *gin.Context) {
 	}
 
 	var rows []dailyCount
-	if err := global.GVA_DB.Model(&model.BorrowRecord{}).
+	if err := global.DB(c.Request.Context()).Model(&model.BorrowRecord{}).
 		Select("DATE_FORMAT(borrow_date, '%Y-%m-%d') AS day_key, COUNT(*) AS count").
 		Where("book_id = ? AND borrow_date >= ? AND borrow_date <= ? AND status <> ?", req.BookID, startDate, endDate, model.BorrowStatusRejected).
 		Group("DATE_FORMAT(borrow_date, '%Y-%m-%d')").
@@ -515,24 +515,24 @@ func (b *BorrowApi) PayFine(c *gin.Context) {
 
 	// 查找读者的ID
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者信息不存在"))
 		return
 	}
 
 	// 查找借阅记录
 	var borrowRecord model.BorrowRecord
-	if err := global.GVA_DB.Where("id = ? AND reader_id = ?", req.RecordID, reader.ID).First(&borrowRecord).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("id = ? AND reader_id = ?", req.RecordID, reader.ID).First(&borrowRecord).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("借阅记录不存在"))
 		return
 	}
 
 	// 查找该借阅记录的罚款记录
 	var fineRecord model.FineRecord
-	if err := global.GVA_DB.Where("borrow_record_id = ?", req.RecordID).First(&fineRecord).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("borrow_record_id = ?", req.RecordID).First(&fineRecord).Error; err != nil {
 		// 如果没有罚款记录，先计算罚款金额
 		fineService := &service.FineService{}
-		fineAmount, overdueDays, err := fineService.CalculateOverdueFine(&borrowRecord)
+		fineAmount, overdueDays, err := fineService.CalculateOverdueFine(c.Request.Context(), &borrowRecord)
 		if err != nil {
 			global.GVA_LOG.Error("计算罚款失败", zap.Error(err))
 			c.JSON(200, response.FailWithMessage("计算罚款失败"))
@@ -560,14 +560,14 @@ func (b *BorrowApi) PayFine(c *gin.Context) {
 			Remark:         "用户提前支付",
 		}
 
-		if err := global.GVA_DB.Create(&fineRecord).Error; err != nil {
+		if err := global.DB(c.Request.Context()).Create(&fineRecord).Error; err != nil {
 			global.GVA_LOG.Error("创建罚款记录失败", zap.Error(err))
 			c.JSON(200, response.FailWithMessage("创建罚款记录失败"))
 			return
 		}
 
 		// 更新读者的罚款金额（已支付，所以只更新总罚款，不更新未支付罚款）
-		if err := global.GVA_DB.Model(&model.Reader{}).Where("id = ?", reader.ID).
+		if err := global.DB(c.Request.Context()).Model(&model.Reader{}).Where("id = ?", reader.ID).
 			UpdateColumn("total_fine", gorm.Expr("total_fine + ?", fineAmount)).
 			Error; err != nil {
 			global.GVA_LOG.Error("更新读者罚款金额失败", zap.Error(err))
@@ -594,7 +594,7 @@ func (b *BorrowApi) PayFine(c *gin.Context) {
 	// 支付未支付的罚款
 	fineService := &service.FineService{}
 	unpaidAmount := fineRecord.Amount - fineRecord.PaidAmount
-	if err := fineService.PayFine(fineRecord.ID, unpaidAmount, userID); err != nil {
+	if err := fineService.PayFine(c.Request.Context(), fineRecord.ID, unpaidAmount, userID); err != nil {
 		global.GVA_LOG.Error("支付罚款失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -630,24 +630,24 @@ func (b *BorrowApi) GetFineByRecord(c *gin.Context) {
 
 	// 查找读者的ID
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者信息不存在"))
 		return
 	}
 
 	// 查找借阅记录
 	var borrowRecord model.BorrowRecord
-	if err := global.GVA_DB.Where("id = ? AND reader_id = ?", recordID, reader.ID).First(&borrowRecord).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("id = ? AND reader_id = ?", recordID, reader.ID).First(&borrowRecord).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("借阅记录不存在"))
 		return
 	}
 
 	// 查找罚款记录
 	var fineRecord model.FineRecord
-	if err := global.GVA_DB.Where("borrow_record_id = ?", recordID).First(&fineRecord).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("borrow_record_id = ?", recordID).First(&fineRecord).Error; err != nil {
 		// 如果没有罚款记录，计算罚款金额
 		fineService := &service.FineService{}
-		fineAmount, overdueDays, err := fineService.CalculateOverdueFine(&borrowRecord)
+		fineAmount, overdueDays, err := fineService.CalculateOverdueFine(c.Request.Context(), &borrowRecord)
 		if err != nil {
 			global.GVA_LOG.Error("计算罚款失败", zap.Error(err))
 			c.JSON(200, response.FailWithMessage("计算罚款失败"))

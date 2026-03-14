@@ -27,7 +27,7 @@ func (s *SystemApi) GetUserList(c *gin.Context) {
 
 	var users []model.User
 	var total int64
-	db := global.GVA_DB.Model(&model.User{})
+	db := global.DB(c.Request.Context()).Model(&model.User{})
 
 	// 搜索功能
 	if pageInfo.Keyword != "" {
@@ -75,7 +75,7 @@ func (s *SystemApi) CreateUser(c *gin.Context) {
 
 	// 检查用户名是否已存在
 	var existUser model.User
-	if err := global.GVA_DB.Where("username = ?", req.Username).First(&existUser).Error; err == nil {
+	if err := global.DB(c.Request.Context()).Where("username = ?", req.Username).First(&existUser).Error; err == nil {
 		c.JSON(200, response.FailWithMessage("用户名已存在"))
 		return
 	}
@@ -94,7 +94,7 @@ func (s *SystemApi) CreateUser(c *gin.Context) {
 		user.Status = req.Status
 	}
 
-	if err := global.GVA_DB.Create(&user).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Create(&user).Error; err != nil {
 		global.GVA_LOG.Error("创建用户失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("创建失败"))
 		return
@@ -120,7 +120,7 @@ func (s *SystemApi) UpdateUser(c *gin.Context) {
 	}
 
 	var user model.User
-	if err := global.GVA_DB.First(&user, req.ID).Error; err != nil {
+	if err := global.DB(c.Request.Context()).First(&user, req.ID).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("用户不存在"))
 		return
 	}
@@ -141,7 +141,7 @@ func (s *SystemApi) UpdateUser(c *gin.Context) {
 		user.Status = req.Status
 	}
 
-	if err := global.GVA_DB.Save(&user).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Save(&user).Error; err != nil {
 		global.GVA_LOG.Error("更新用户失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("更新失败"))
 		return
@@ -158,7 +158,7 @@ func (s *SystemApi) DeleteUser(c *gin.Context) {
 		return
 	}
 
-	if err := global.GVA_DB.Delete(&model.User{}, req.ID).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Delete(&model.User{}, req.ID).Error; err != nil {
 		global.GVA_LOG.Error("删除用户失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("删除失败"))
 		return

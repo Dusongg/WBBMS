@@ -42,7 +42,7 @@ func (s *FavoriteService) ToggleFavorite(ctx context.Context, userID, bookID uin
 	isFavorited, err := s.checkFavoriteStatusFromRedis(ctx, userID, bookID)
 	if err != nil {
 		// Redis查询失败，从MySQL查询
-		isFavorited, err = s.checkFavoriteStatusFromDB(userID, bookID)
+		isFavorited, err = s.checkFavoriteStatusFromDB(ctx, userID, bookID)
 		if err != nil {
 			global.GVA_LOG.Error("查询收藏状态失败", zap.Error(err))
 			return nil, errors.New("查询收藏状态失败")
@@ -81,13 +81,13 @@ func (s *FavoriteService) ToggleFavorite(ctx context.Context, userID, bookID uin
 		global.GVA_LOG.Warn("发送Stream消息失败", zap.Error(err))
 		// Stream发送失败，回退Redis操作并直接同步MySQL
 		s.rollbackRedis(ctx, userID, bookID, action)
-		s.syncToMySQLDirectly(userID, bookID, action)
+		s.syncToMySQLDirectly(ctx, userID, bookID, action)
 	}
 
 	// 6. 获取最新统计数据
 	_, favoriteCount, err := s.redis.GetBookStats(ctx, bookID)
 	if err != nil {
-		favoriteCount = s.getBookFavoriteCountFromDB(bookID)
+		favoriteCount = s.getBookFavoriteCountFromDB(ctx, bookID)
 	}
 
 	return &model.FavoriteStatus{
@@ -102,7 +102,7 @@ func (s *FavoriteService) GetFavoriteStatus(ctx context.Context, userID, bookID 
 	isFavorited, err := s.checkFavoriteStatusFromRedis(ctx, userID, bookID)
 	if err != nil {
 		// Redis查询失败，从MySQL查询
-		isFavorited, err = s.checkFavoriteStatusFromDB(userID, bookID)
+		isFavorited, err = s.checkFavoriteStatusFromDB(ctx, userID, bookID)
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +111,7 @@ func (s *FavoriteService) GetFavoriteStatus(ctx context.Context, userID, bookID 
 	// 2. 获取图书收藏总数
 	_, favoriteCount, err := s.redis.GetBookStats(ctx, bookID)
 	if err != nil {
-		favoriteCount = s.getBookFavoriteCountFromDB(bookID)
+		favoriteCount = s.getBookFavoriteCountFromDB(ctx, bookID)
 	}
 
 	return &model.FavoriteStatus{
@@ -152,7 +152,7 @@ func (s *FavoriteService) GetUserFavoriteList(ctx context.Context, userID uint, 
 	var favorites []model.BookFavoriteWithBook
 	var total int64
 
-	db := global.GVA_DB.Model(&model.BookFavorite{}).Where("user_id = ?", userID)
+	db := global.DB(ctx).Model(&model.BookFavorite{}).Where("user_id = ?", userID)
 
 	// 获取总数
 	if err := db.Count(&total).Error; err != nil {
@@ -180,9 +180,9 @@ func (s *FavoriteService) checkFavoriteStatusFromRedis(ctx context.Context, user
 	return s.redis.IsUserFavorited(ctx, userID, bookID)
 }
 
-func (s *FavoriteService) checkFavoriteStatusFromDB(userID, bookID uint) (bool, error) {
+func (s *FavoriteService) checkFavoriteStatusFromDB(ctx context.Context, userID, bookID uint) (bool, error) {
 	var count int64
-	err := global.GVA_DB.Model(&model.BookFavorite{}).
+	err := global.DB(ctx).Model(&model.BookFavorite{}).
 		Where("user_id = ? AND book_id = ?", userID, bookID).
 		Count(&count).Error
 	return count > 0, err
@@ -249,33 +249,34 @@ func (s *FavoriteService) rollbackRedis(ctx context.Context, userID, bookID uint
 	}
 }
 
-func (s *FavoriteService) syncToMySQLDirectly(userID, bookID uint, action string) {
+func (s *FavoriteService) syncToMySQLDirectly(ctx context.Context, userID, bookID uint, action string) {
+	db := global.DB(ctx)
 	if action == "favorite" {
 		favorite := model.BookFavorite{
 			UserID: userID,
 			BookID: bookID,
 		}
-		if err := global.GVA_DB.Create(&favorite).Error; err != nil {
+		if err := db.Create(&favorite).Error; err != nil {
 			global.GVA_LOG.Error("直接同步收藏到MySQL失败", zap.Error(err))
 			return
 		}
-		global.GVA_DB.Model(&model.Book{}).
+		db.Model(&model.Book{}).
 			Where("id = ?", bookID).
 			UpdateColumn("favorite_count", gorm.Expr("favorite_count + ?", 1))
 	} else {
-		if err := global.GVA_DB.Where("user_id = ? AND book_id = ?", userID, bookID).
+		if err := db.Where("user_id = ? AND book_id = ?", userID, bookID).
 			Delete(&model.BookFavorite{}).Error; err != nil {
 			global.GVA_LOG.Error("直接同步取消收藏到MySQL失败", zap.Error(err))
 			return
 		}
-		global.GVA_DB.Model(&model.Book{}).
+		db.Model(&model.Book{}).
 			Where("id = ?", bookID).
 			UpdateColumn("favorite_count", gorm.Expr("favorite_count - ?", 1))
 	}
 }
 
-func (s *FavoriteService) getBookFavoriteCountFromDB(bookID uint) int {
+func (s *FavoriteService) getBookFavoriteCountFromDB(ctx context.Context, bookID uint) int {
 	var count int64
-	global.GVA_DB.Model(&model.BookFavorite{}).Where("book_id = ?", bookID).Count(&count)
+	global.DB(ctx).Model(&model.BookFavorite{}).Where("book_id = ?", bookID).Count(&count)
 	return int(count)
 }

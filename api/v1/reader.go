@@ -27,7 +27,7 @@ func (r *ReaderApi) GetReaderList(c *gin.Context) {
 
 	var readers []model.Reader
 	var total int64
-	db := global.GVA_DB.Model(&model.Reader{}).Preload("User")
+	db := global.DB(c.Request.Context()).Model(&model.Reader{}).Preload("User")
 
 	// 搜索功能
 	if pageInfo.Keyword != "" {
@@ -67,7 +67,7 @@ func (r *ReaderApi) GetReader(c *gin.Context) {
 	}
 
 	var reader model.Reader
-	if err := global.GVA_DB.Preload("User").First(&reader, req.ID).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Preload("User").First(&reader, req.ID).Error; err != nil {
 		global.GVA_LOG.Error("获取读者信息失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("获取读者信息失败"))
 		return
@@ -105,7 +105,7 @@ func (r *ReaderApi) UpdateReaderStatus(c *gin.Context) {
 	}
 
 	var reader model.Reader
-	if err := global.GVA_DB.First(&reader, req.ID).Error; err != nil {
+	if err := global.DB(c.Request.Context()).First(&reader, req.ID).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者不存在"))
 		return
 	}
@@ -115,7 +115,7 @@ func (r *ReaderApi) UpdateReaderStatus(c *gin.Context) {
 		reader.Remark = req.Remark
 	}
 
-	if err := global.GVA_DB.Save(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Save(&reader).Error; err != nil {
 		global.GVA_LOG.Error("更新读者状态失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("更新失败"))
 		return
@@ -140,7 +140,7 @@ func (r *ReaderApi) UpdateReader(c *gin.Context) {
 	}
 
 	var reader model.Reader
-	if err := global.GVA_DB.First(&reader, req.ID).Error; err != nil {
+	if err := global.DB(c.Request.Context()).First(&reader, req.ID).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者不存在"))
 		return
 	}
@@ -158,7 +158,7 @@ func (r *ReaderApi) UpdateReader(c *gin.Context) {
 		reader.Remark = req.Remark
 	}
 
-	if err := global.GVA_DB.Save(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Save(&reader).Error; err != nil {
 		global.GVA_LOG.Error("更新读者信息失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("更新失败"))
 		return

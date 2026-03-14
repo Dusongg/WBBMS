@@ -3,6 +3,7 @@ package service
 import (
 	"bookadmin/global"
 	"bookadmin/model"
+	"context"
 	"errors"
 	"math"
 	"time"
@@ -14,7 +15,7 @@ import (
 type FineService struct{}
 
 // CalculateOverdueFine 计算逾期罚款
-func (s *FineService) CalculateOverdueFine(borrowRecord *model.BorrowRecord) (float64, int, error) {
+func (s *FineService) CalculateOverdueFine(ctx context.Context, borrowRecord *model.BorrowRecord) (float64, int, error) {
 	// 计算逾期天数
 	now := time.Now()
 	if borrowRecord.DueDate.After(now) {
@@ -28,15 +29,15 @@ func (s *FineService) CalculateOverdueFine(borrowRecord *model.BorrowRecord) (fl
 	}
 
 	// 获取罚款配置
-	finePerDay := GlobalConfigService.GetFloatConfig(model.ConfigOverdueFinePerDay, 0.5)
-	maxFineRate := GlobalConfigService.GetFloatConfig(model.ConfigMaxFineRate, 0.5)
+	finePerDay := GlobalConfigService.GetFloatConfig(ctx, model.ConfigOverdueFinePerDay, 0.5)
+	maxFineRate := GlobalConfigService.GetFloatConfig(ctx, model.ConfigMaxFineRate, 0.5)
 
 	// 计算基础罚款
 	fineAmount := float64(overdueDays) * finePerDay
 
 	// 获取图书价格，计算罚款上限
 	var book model.Book
-	if err := global.GVA_DB.First(&book, borrowRecord.BookID).Error; err == nil {
+	if err := global.DB(ctx).First(&book, borrowRecord.BookID).Error; err == nil {
 		maxFine := book.Price * maxFineRate
 		if fineAmount > maxFine {
 			fineAmount = maxFine
@@ -49,8 +50,8 @@ func (s *FineService) CalculateOverdueFine(borrowRecord *model.BorrowRecord) (fl
 	return fineAmount, overdueDays, nil
 }
 
-// CreateFinetRecord 创建罚款记录
-func (s *FineService) CreateFineRecord(readerID uint, borrowRecordID uint, fineType string, amount float64, overdueDays int, operatorID uint) error {
+// CreateFineRecord 创建罚款记录
+func (s *FineService) CreateFineRecord(ctx context.Context, readerID uint, borrowRecordID uint, fineType string, amount float64, overdueDays int, operatorID uint) error {
 	fine := model.FineRecord{
 		ReaderID:       readerID,
 		BorrowRecordID: borrowRecordID,
@@ -63,13 +64,13 @@ func (s *FineService) CreateFineRecord(readerID uint, borrowRecordID uint, fineT
 		OperatorID:     operatorID,
 	}
 
-	if err := global.GVA_DB.Create(&fine).Error; err != nil {
+	if err := global.DB(ctx).Create(&fine).Error; err != nil {
 		global.GVA_LOG.Error("创建罚款记录失败", zap.Error(err))
 		return errors.New("创建罚款记录失败")
 	}
 
 	// 更新读者的罚款金额
-	if err := global.GVA_DB.Model(&model.Reader{}).Where("id = ?", readerID).
+	if err := global.DB(ctx).Model(&model.Reader{}).Where("id = ?", readerID).
 		UpdateColumn("unpaid_fine", gorm.Expr("unpaid_fine + ?", amount)).
 		UpdateColumn("total_fine", gorm.Expr("total_fine + ?", amount)).
 		Error; err != nil {
@@ -81,8 +82,8 @@ func (s *FineService) CreateFineRecord(readerID uint, borrowRecordID uint, fineT
 }
 
 // PayFine 支付罚款
-func (s *FineService) PayFine(fineID uint, paidAmount float64, operatorID uint) error {
-	tx := global.GVA_DB.Begin()
+func (s *FineService) PayFine(ctx context.Context, fineID uint, paidAmount float64, operatorID uint) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -138,8 +139,8 @@ func (s *FineService) PayFine(fineID uint, paidAmount float64, operatorID uint) 
 }
 
 // WaiveFine 豁免罚款
-func (s *FineService) WaiveFine(fineID uint, operatorID uint, remark string) error {
-	tx := global.GVA_DB.Begin()
+func (s *FineService) WaiveFine(ctx context.Context, fineID uint, operatorID uint, remark string) error {
+	tx := global.DB(ctx).Begin()
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
@@ -195,9 +196,9 @@ func (s *FineService) WaiveFine(fineID uint, operatorID uint, remark string) err
 }
 
 // GetReaderUnpaidFines 获取读者未支付的罚款列表
-func (s *FineService) GetReaderUnpaidFines(readerID uint) ([]model.FineRecord, error) {
+func (s *FineService) GetReaderUnpaidFines(ctx context.Context, readerID uint) ([]model.FineRecord, error) {
 	var fines []model.FineRecord
-	if err := global.GVA_DB.Where("reader_id = ? AND status = ?", readerID, model.FineStatusUnpaid).
+	if err := global.DB(ctx).Where("reader_id = ? AND status = ?", readerID, model.FineStatusUnpaid).
 		Preload("BorrowRecord").
 		Preload("BorrowRecord.Book").
 		Order("fine_date DESC").

@@ -45,7 +45,7 @@ func (s *LikeService) ToggleLike(ctx context.Context, userID, bookID uint) (*mod
 	isLiked, err := s.checkLikeStatusFromRedis(ctx, userID, bookID)
 	if err != nil {
 		// Redis查询失败，从MySQL查询
-		isLiked, err = s.checkLikeStatusFromDB(userID, bookID)
+		isLiked, err = s.checkLikeStatusFromDB(ctx, userID, bookID)
 		if err != nil {
 			global.GVA_LOG.Error("查询点赞状态失败", zap.Error(err))
 			return nil, errors.New("查询点赞状态失败")
@@ -85,14 +85,14 @@ func (s *LikeService) ToggleLike(ctx context.Context, userID, bookID uint) (*mod
 		global.GVA_LOG.Warn("发送Stream消息失败", zap.Error(err))
 		// Stream发送失败，回退Redis操作并直接同步MySQL
 		s.rollbackRedis(ctx, userID, bookID, action)
-		s.syncToMySQLDirectly(userID, bookID, action)
+		s.syncToMySQLDirectly(ctx, userID, bookID, action)
 	}
 
 	// 6. 获取最新统计数据
 	likeCount, _, err := s.redis.GetBookStats(ctx, bookID)
 	if err != nil {
 		// Redis失败，从MySQL查询
-		likeCount = s.getBookLikeCountFromDB(bookID)
+		likeCount = s.getBookLikeCountFromDB(ctx, bookID)
 	}
 
 	return &model.LikeStatus{
@@ -107,7 +107,7 @@ func (s *LikeService) GetLikeStatus(ctx context.Context, userID, bookID uint) (*
 	isLiked, err := s.checkLikeStatusFromRedis(ctx, userID, bookID)
 	if err != nil {
 		// Redis查询失败，从MySQL查询
-		isLiked, err = s.checkLikeStatusFromDB(userID, bookID)
+		isLiked, err = s.checkLikeStatusFromDB(ctx, userID, bookID)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +117,7 @@ func (s *LikeService) GetLikeStatus(ctx context.Context, userID, bookID uint) (*
 	likeCount, _, err := s.redis.GetBookStats(ctx, bookID)
 	if err != nil {
 		// Redis失败，从MySQL查询
-		likeCount = s.getBookLikeCountFromDB(bookID)
+		likeCount = s.getBookLikeCountFromDB(ctx, bookID)
 	}
 
 	return &model.LikeStatus{
@@ -158,7 +158,7 @@ func (s *LikeService) GetUserLikeList(ctx context.Context, userID uint, page, pa
 	var likes []model.BookLikeWithBook
 	var total int64
 
-	db := global.GVA_DB.Model(&model.BookLike{}).Where("user_id = ?", userID)
+	db := global.DB(ctx).Model(&model.BookLike{}).Where("user_id = ?", userID)
 
 	// 获取总数
 	if err := db.Count(&total).Error; err != nil {
@@ -188,9 +188,9 @@ func (s *LikeService) checkLikeStatusFromRedis(ctx context.Context, userID, book
 }
 
 // checkLikeStatusFromDB 从MySQL检查点赞状态
-func (s *LikeService) checkLikeStatusFromDB(userID, bookID uint) (bool, error) {
+func (s *LikeService) checkLikeStatusFromDB(ctx context.Context, userID, bookID uint) (bool, error) {
 	var count int64
-	err := global.GVA_DB.Model(&model.BookLike{}).
+	err := global.DB(ctx).Model(&model.BookLike{}).
 		Where("user_id = ? AND book_id = ?", userID, bookID).
 		Count(&count).Error
 	return count > 0, err
@@ -271,38 +271,39 @@ func (s *LikeService) rollbackRedis(ctx context.Context, userID, bookID uint, ac
 }
 
 // syncToMySQLDirectly 直接同步到MySQL（降级方案）
-func (s *LikeService) syncToMySQLDirectly(userID, bookID uint, action string) {
+func (s *LikeService) syncToMySQLDirectly(ctx context.Context, userID, bookID uint, action string) {
+	db := global.DB(ctx)
 	if action == "like" {
 		// 插入点赞记录
 		like := model.BookLike{
 			UserID: userID,
 			BookID: bookID,
 		}
-		if err := global.GVA_DB.Create(&like).Error; err != nil {
+		if err := db.Create(&like).Error; err != nil {
 			global.GVA_LOG.Error("直接同步点赞到MySQL失败", zap.Error(err))
 			return
 		}
 		// 更新books表统计
-		global.GVA_DB.Model(&model.Book{}).
+		db.Model(&model.Book{}).
 			Where("id = ?", bookID).
 			UpdateColumn("like_count", gorm.Expr("like_count + ?", 1))
 	} else {
 		// 删除点赞记录
-		if err := global.GVA_DB.Where("user_id = ? AND book_id = ?", userID, bookID).
+		if err := db.Where("user_id = ? AND book_id = ?", userID, bookID).
 			Delete(&model.BookLike{}).Error; err != nil {
 			global.GVA_LOG.Error("直接同步取消点赞到MySQL失败", zap.Error(err))
 			return
 		}
 		// 更新books表统计
-		global.GVA_DB.Model(&model.Book{}).
+		db.Model(&model.Book{}).
 			Where("id = ?", bookID).
 			UpdateColumn("like_count", gorm.Expr("like_count - ?", 1))
 	}
 }
 
 // getBookLikeCountFromDB 从MySQL获取图书点赞数
-func (s *LikeService) getBookLikeCountFromDB(bookID uint) int {
+func (s *LikeService) getBookLikeCountFromDB(ctx context.Context, bookID uint) int {
 	var count int64
-	global.GVA_DB.Model(&model.BookLike{}).Where("book_id = ?", bookID).Count(&count)
+	global.DB(ctx).Model(&model.BookLike{}).Where("book_id = ?", bookID).Count(&count)
 	return int(count)
 }

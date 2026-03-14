@@ -3,6 +3,7 @@ package service
 import (
 	"bookadmin/global"
 	"bookadmin/model"
+	"context"
 	"errors"
 	"strconv"
 	"time"
@@ -13,7 +14,7 @@ import (
 type MessageService struct{}
 
 // CreateMessage 创建消息
-func (s *MessageService) CreateMessage(userID uint, msgType model.MessageType, title, content string, relatedID *uint, relatedType string) error {
+func (s *MessageService) CreateMessage(ctx context.Context, userID uint, msgType model.MessageType, title, content string, relatedID *uint, relatedType string) error {
 	message := model.Message{
 		UserID:      userID,
 		Type:        msgType,
@@ -24,7 +25,7 @@ func (s *MessageService) CreateMessage(userID uint, msgType model.MessageType, t
 		RelatedType: relatedType,
 	}
 
-	if err := global.GVA_DB.Create(&message).Error; err != nil {
+	if err := global.DB(ctx).Create(&message).Error; err != nil {
 		global.GVA_LOG.Error("创建消息失败", zap.Error(err))
 		return errors.New("创建消息失败")
 	}
@@ -34,11 +35,11 @@ func (s *MessageService) CreateMessage(userID uint, msgType model.MessageType, t
 }
 
 // GetUserMessages 获取用户消息列表
-func (s *MessageService) GetUserMessages(userID uint, page, pageSize int) ([]model.Message, int64, error) {
+func (s *MessageService) GetUserMessages(ctx context.Context, userID uint, page, pageSize int) ([]model.Message, int64, error) {
 	var messages []model.Message
 	var total int64
 
-	db := global.GVA_DB.Model(&model.Message{}).Where("user_id = ?", userID)
+	db := global.DB(ctx).Model(&model.Message{}).Where("user_id = ?", userID)
 
 	// 统计总数
 	if err := db.Count(&total).Error; err != nil {
@@ -58,9 +59,9 @@ func (s *MessageService) GetUserMessages(userID uint, page, pageSize int) ([]mod
 }
 
 // GetUnreadCount 获取未读消息数量
-func (s *MessageService) GetUnreadCount(userID uint) (int64, error) {
+func (s *MessageService) GetUnreadCount(ctx context.Context, userID uint) (int64, error) {
 	var count int64
-	if err := global.GVA_DB.Model(&model.Message{}).
+	if err := global.DB(ctx).Model(&model.Message{}).
 		Where("user_id = ? AND is_read = ?", userID, false).
 		Count(&count).Error; err != nil {
 		return 0, err
@@ -69,9 +70,9 @@ func (s *MessageService) GetUnreadCount(userID uint) (int64, error) {
 }
 
 // MarkAsRead 标记消息为已读
-func (s *MessageService) MarkAsRead(messageID, userID uint) error {
+func (s *MessageService) MarkAsRead(ctx context.Context, messageID, userID uint) error {
 	now := time.Now()
-	result := global.GVA_DB.Model(&model.Message{}).
+	result := global.DB(ctx).Model(&model.Message{}).
 		Where("id = ? AND user_id = ?", messageID, userID).
 		Updates(map[string]interface{}{
 			"is_read": true,
@@ -90,9 +91,9 @@ func (s *MessageService) MarkAsRead(messageID, userID uint) error {
 }
 
 // MarkAllAsRead 标记所有消息为已读
-func (s *MessageService) MarkAllAsRead(userID uint) error {
+func (s *MessageService) MarkAllAsRead(ctx context.Context, userID uint) error {
 	now := time.Now()
-	return global.GVA_DB.Model(&model.Message{}).
+	return global.DB(ctx).Model(&model.Message{}).
 		Where("user_id = ? AND is_read = ?", userID, false).
 		Updates(map[string]interface{}{
 			"is_read": true,
@@ -101,8 +102,8 @@ func (s *MessageService) MarkAllAsRead(userID uint) error {
 }
 
 // DeleteMessage 删除消息
-func (s *MessageService) DeleteMessage(messageID, userID uint) error {
-	result := global.GVA_DB.Where("id = ? AND user_id = ?", messageID, userID).
+func (s *MessageService) DeleteMessage(ctx context.Context, messageID, userID uint) error {
+	result := global.DB(ctx).Where("id = ? AND user_id = ?", messageID, userID).
 		Delete(&model.Message{})
 
 	if result.Error != nil {
@@ -117,11 +118,11 @@ func (s *MessageService) DeleteMessage(messageID, userID uint) error {
 }
 
 // SendReservationAvailableMessage 发送预约可取书消息
-func (s *MessageService) SendReservationAvailableMessage(userID uint, bookTitle string, reservationID uint, pickupDays int) error {
+func (s *MessageService) SendReservationAvailableMessage(ctx context.Context, userID uint, bookTitle string, reservationID uint, pickupDays int) error {
 	title := "📚 预约图书已可借阅"
 	content := "您预约的《" + bookTitle + "》现在可以借阅了！请在 " +
 		strconv.Itoa(pickupDays) + " 天内前往图书管理员处登记借书。逾期预约将自动取消。"
 
 	relatedID := reservationID
-	return s.CreateMessage(userID, model.MessageTypeReservation, title, content, &relatedID, "reservation")
+	return s.CreateMessage(ctx, userID, model.MessageTypeReservation, title, content, &relatedID, "reservation")
 }

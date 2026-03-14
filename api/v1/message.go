@@ -29,7 +29,7 @@ func (m *MessageApi) GetMessages(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
 
 	// 查询消息列表
-	messages, total, err := messageService.GetUserMessages(userID, page, pageSize)
+	messages, total, err := messageService.GetUserMessages(c.Request.Context(), userID, page, pageSize)
 	if err != nil {
 		global.GVA_LOG.Error("获取消息列表失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("获取消息列表失败"))
@@ -54,7 +54,7 @@ func (m *MessageApi) GetUnreadCount(c *gin.Context) {
 	}
 	userID := userIDInterface.(uint)
 
-	count, err := messageService.GetUnreadCount(userID)
+	count, err := messageService.GetUnreadCount(c.Request.Context(), userID)
 	if err != nil {
 		global.GVA_LOG.Error("获取未读消息数量失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("获取未读消息数量失败"))
@@ -83,7 +83,7 @@ func (m *MessageApi) MarkAsRead(c *gin.Context) {
 	}
 	userID := userIDInterface.(uint)
 
-	if err := messageService.MarkAsRead(uint(messageID), userID); err != nil {
+	if err := messageService.MarkAsRead(c.Request.Context(), uint(messageID), userID); err != nil {
 		global.GVA_LOG.Error("标记消息已读失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -102,7 +102,7 @@ func (m *MessageApi) MarkAllAsRead(c *gin.Context) {
 	}
 	userID := userIDInterface.(uint)
 
-	if err := messageService.MarkAllAsRead(userID); err != nil {
+	if err := messageService.MarkAllAsRead(c.Request.Context(), userID); err != nil {
 		global.GVA_LOG.Error("标记所有消息已读失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("操作失败"))
 		return
@@ -128,7 +128,7 @@ func (m *MessageApi) DeleteMessage(c *gin.Context) {
 	}
 	userID := userIDInterface.(uint)
 
-	if err := messageService.DeleteMessage(uint(messageID), userID); err != nil {
+	if err := messageService.DeleteMessage(c.Request.Context(), uint(messageID), userID); err != nil {
 		global.GVA_LOG.Error("删除消息失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return

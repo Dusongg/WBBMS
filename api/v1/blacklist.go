@@ -31,7 +31,7 @@ func (b *BlacklistApi) GetBlacklistList(c *gin.Context) {
 
 	var blacklists []model.Blacklist
 	var total int64
-	db := global.GVA_DB.Model(&model.Blacklist{}).
+	db := global.DB(c.Request.Context()).Model(&model.Blacklist{}).
 		Preload("Reader").
 		Preload("Reader.User")
 
@@ -106,7 +106,7 @@ func (b *BlacklistApi) AddToBlacklist(c *gin.Context) {
 
 	// 添加到黑名单
 	reason := model.BlacklistReason(req.Reason)
-	if err := blacklistService.AddToBlacklist(req.ReaderID, reason, req.Description, endDate, opID); err != nil {
+	if err := blacklistService.AddToBlacklist(c.Request.Context(), req.ReaderID, reason, req.Description, endDate, opID); err != nil {
 		global.GVA_LOG.Error("添加黑名单失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -137,7 +137,7 @@ func (b *BlacklistApi) RemoveFromBlacklist(c *gin.Context) {
 	}
 
 	// 解除黑名单
-	if err := blacklistService.RemoveFromBlacklist(uint(blacklistID), opID, req.Remark); err != nil {
+	if err := blacklistService.RemoveFromBlacklist(c.Request.Context(), uint(blacklistID), opID, req.Remark); err != nil {
 		global.GVA_LOG.Error("解除黑名单失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -166,7 +166,7 @@ func (b *BlacklistApi) RemoveByUserID(c *gin.Context) {
 		opID = operatorID.(uint)
 	}
 
-	if err := blacklistService.RemoveActiveBlacklistByUserID(uint(userID), opID, req.Remark); err != nil {
+	if err := blacklistService.RemoveActiveBlacklistByUserID(c.Request.Context(), uint(userID), opID, req.Remark); err != nil {
 		global.GVA_LOG.Error("按用户解禁失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage(err.Error()))
 		return
@@ -187,13 +187,13 @@ func (b *BlacklistApi) GetMyBlacklistStatus(c *gin.Context) {
 
 	// 查找读者信息
 	var reader model.Reader
-	if err := global.GVA_DB.Where("user_id = ?", userID).First(&reader).Error; err != nil {
+	if err := global.DB(c.Request.Context()).Where("user_id = ?", userID).First(&reader).Error; err != nil {
 		c.JSON(200, response.FailWithMessage("读者信息不存在"))
 		return
 	}
 
 	// 获取黑名单记录
-	blacklists, err := blacklistService.GetReaderBlacklists(reader.ID)
+	blacklists, err := blacklistService.GetReaderBlacklists(c.Request.Context(), reader.ID)
 	if err != nil {
 		global.GVA_LOG.Error("获取黑名单记录失败", zap.Error(err))
 		c.JSON(200, response.FailWithMessage("获取黑名单记录失败"))
