@@ -5,6 +5,7 @@ import (
 	"bookadmin/global"
 	"bookadmin/initialize"
 	"bookadmin/observability"
+	"bookadmin/resilience"
 	"bookadmin/router"
 	"bookadmin/worker"
 	"context"
@@ -28,6 +29,8 @@ func main() {
 		_, _ = fmt.Fprintf(os.Stderr, "加载配置失败: %v\n", err)
 		os.Exit(1)
 	}
+
+	resilience.InitBreakers()
 
 	logger := initialize.Zap()
 	defer func() {

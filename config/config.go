@@ -22,6 +22,28 @@ type Config struct {
 	Migration MigrationConfig `yaml:"migration"`
 	Security  SecurityConfig  `yaml:"security"`
 	Tracing   TracingConfig   `yaml:"tracing"`
+	Resilience ResilienceConfig `yaml:"resilience"`
+}
+
+// ResilienceConfig 限流与熔断配置
+type ResilienceConfig struct {
+	RateLimit      RateLimitConfig      `yaml:"rate-limit"`
+	CircuitBreaker CircuitBreakerConfig `yaml:"circuit-breaker"`
+}
+
+type RateLimitConfig struct {
+	Enabled    bool `yaml:"enabled"`
+	RPS        int  `yaml:"rps"`         // 每秒请求数
+	Burst      int  `yaml:"burst"`       // 突发容量
+	PerIP      bool `yaml:"per-ip"`      // 是否按 IP 限流
+}
+
+type CircuitBreakerConfig struct {
+	Enabled          bool `yaml:"enabled"`
+	MaxRequests      int  `yaml:"max-requests"`       // 半开状态允许的探测请求数
+	Interval         int  `yaml:"interval"`           // 统计窗口秒数
+	Timeout          int  `yaml:"timeout"`            // 熔断后多久进入半开（秒）
+	FailureThreshold int  `yaml:"failure-threshold"`  // 失败阈值触发熔断
 }
 
 type TracingConfig struct {
@@ -210,6 +232,21 @@ func defaultConfig() *Config {
 			Endpoint: "localhost:4317",
 			Service:  "bookadmin-api",
 		},
+		Resilience: ResilienceConfig{
+			RateLimit: RateLimitConfig{
+				Enabled: true,
+				RPS:     100,
+				Burst:   50,
+				PerIP:   true,
+			},
+			CircuitBreaker: CircuitBreakerConfig{
+				Enabled:          true,
+				MaxRequests:      3,
+				Interval:         10,
+				Timeout:          30,
+				FailureThreshold: 5,
+			},
+		},
 	}
 }
 
@@ -276,6 +313,16 @@ func (c *Config) applyEnvOverrides() {
 	applyBool("TRACING_ENABLED", &c.Tracing.Enabled)
 	applyString("OTEL_EXPORTER_OTLP_ENDPOINT", &c.Tracing.Endpoint)
 	applyString("OTEL_SERVICE_NAME", &c.Tracing.Service)
+
+	applyBool("RATE_LIMIT_ENABLED", &c.Resilience.RateLimit.Enabled)
+	applyInt("RATE_LIMIT_RPS", &c.Resilience.RateLimit.RPS)
+	applyInt("RATE_LIMIT_BURST", &c.Resilience.RateLimit.Burst)
+	applyBool("RATE_LIMIT_PER_IP", &c.Resilience.RateLimit.PerIP)
+	applyBool("CIRCUIT_BREAKER_ENABLED", &c.Resilience.CircuitBreaker.Enabled)
+	applyInt("CIRCUIT_BREAKER_MAX_REQUESTS", &c.Resilience.CircuitBreaker.MaxRequests)
+	applyInt("CIRCUIT_BREAKER_INTERVAL", &c.Resilience.CircuitBreaker.Interval)
+	applyInt("CIRCUIT_BREAKER_TIMEOUT", &c.Resilience.CircuitBreaker.Timeout)
+	applyInt("CIRCUIT_BREAKER_FAILURE_THRESHOLD", &c.Resilience.CircuitBreaker.FailureThreshold)
 
 	if raw := strings.TrimSpace(os.Getenv("SECURITY_CORS_ALLOWED_ORIGINS")); raw != "" {
 		parts := strings.Split(raw, ",")
@@ -360,6 +407,24 @@ func (c *Config) applyDerivedDefaults() {
 	}
 	if c.Tracing.Endpoint == "" {
 		c.Tracing.Endpoint = "localhost:4317"
+	}
+	if c.Resilience.RateLimit.RPS <= 0 {
+		c.Resilience.RateLimit.RPS = 100
+	}
+	if c.Resilience.RateLimit.Burst <= 0 {
+		c.Resilience.RateLimit.Burst = 50
+	}
+	if c.Resilience.CircuitBreaker.Interval <= 0 {
+		c.Resilience.CircuitBreaker.Interval = 10
+	}
+	if c.Resilience.CircuitBreaker.Timeout <= 0 {
+		c.Resilience.CircuitBreaker.Timeout = 30
+	}
+	if c.Resilience.CircuitBreaker.FailureThreshold == 0 {
+		c.Resilience.CircuitBreaker.FailureThreshold = 5
+	}
+	if c.Resilience.CircuitBreaker.MaxRequests == 0 {
+		c.Resilience.CircuitBreaker.MaxRequests = 3
 	}
 }
 

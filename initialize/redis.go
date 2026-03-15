@@ -3,6 +3,7 @@ package initialize
 import (
 	"bookadmin/global"
 	"bookadmin/observability"
+	"bookadmin/resilience"
 	"context"
 	"fmt"
 	"strings"
@@ -39,6 +40,11 @@ func Redis() *redis.Client {
 		ReadTimeout:  time.Duration(global.GVA_CONFIG.Redis.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(global.GVA_CONFIG.Redis.WriteTimeout) * time.Second,
 	})
+
+	// 熔断器：为 Redis 注入熔断保护（InitBreakers 需在 main 中 Config 后已调用）
+	if resilience.RedisBreakerEnabled() {
+		client.AddHook(resilience.NewRedisBreakerHook())
+	}
 
 	// 分布式追踪：为 Redis 客户端注入 OpenTelemetry 埋点
 	if observability.TracerEnabled() {

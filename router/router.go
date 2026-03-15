@@ -4,6 +4,7 @@ import (
 	"bookadmin/global"
 	"bookadmin/middleware"
 	"bookadmin/observability"
+	"bookadmin/resilience"
 	"context"
 	"net/http"
 	"os"
@@ -27,6 +28,54 @@ func traceIDHeaderMiddleware() gin.HandlerFunc {
 }
 
 var instanceID = initInstanceID()
+
+// readyzHandler 就绪探针：DB/Redis Ping 驱动熔断状态；withMetrics 时写 DB/Redis 指标
+func readyzHandler(withMetrics bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ready := global.GVA_DB != nil
+		if global.GVA_DB != nil {
+			if sqlDB, err := global.GVA_DB.DB(); err == nil {
+				_, pingErr := resilience.DBExecute(func() (interface{}, error) {
+					ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+					defer cancel()
+					return nil, sqlDB.PingContext(ctx)
+				})
+				if pingErr != nil {
+					ready = false
+				}
+				if withMetrics {
+					stats := sqlDB.Stats()
+					observability.SetDBStats(stats.OpenConnections, stats.Idle, stats.InUse)
+				}
+			} else {
+				ready = false
+			}
+		}
+		if global.GVA_CONFIG != nil && global.GVA_CONFIG.Redis.Enabled && global.GVA_REDIS == nil {
+			ready = false
+		}
+		if ready && global.GVA_REDIS != nil {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+			defer cancel()
+			start := time.Now()
+			_, pingErr := resilience.RedisExecute(func() (interface{}, error) {
+				return nil, global.GVA_REDIS.Ping(ctx).Err()
+			})
+			if pingErr != nil {
+				ready = false
+			} else if withMetrics {
+				observability.SetRedisPing(time.Since(start))
+			}
+		}
+		statusCode := http.StatusOK
+		status := "ready"
+		if !ready {
+			statusCode = http.StatusServiceUnavailable
+			status = "not_ready"
+		}
+		c.JSON(statusCode, gin.H{"status": status})
+	}
+}
 
 func initInstanceID() string {
 	if id := os.Getenv("APP_INSTANCE_ID"); id != "" {
@@ -60,6 +109,12 @@ func InitRouter() *gin.Engine {
 		Router.Use(traceIDHeaderMiddleware())
 	}
 	Router.Use(middleware.RequestContext())
+	if global.GVA_CONFIG != nil && global.GVA_CONFIG.Resilience.RateLimit.Enabled {
+		Router.Use(middleware.RateLimit())
+	}
+	if global.GVA_CONFIG != nil && global.GVA_CONFIG.Resilience.CircuitBreaker.Enabled {
+		Router.Use(middleware.CircuitBreaker())
+	}
 	Router.Use(middleware.CORS())
 
 	Router.GET("/healthz", func(c *gin.Context) {
@@ -70,47 +125,7 @@ func InitRouter() *gin.Engine {
 		})
 	})
 
-	Router.GET("/readyz", func(c *gin.Context) {
-		ready := global.GVA_DB != nil
-		if global.GVA_DB != nil {
-			if sqlDB, err := global.GVA_DB.DB(); err == nil {
-				if err := sqlDB.PingContext(c.Request.Context()); err != nil {
-					ready = false
-				}
-				stats := sqlDB.Stats()
-				observability.SetDBStats(stats.OpenConnections, stats.Idle, stats.InUse)
-			} else {
-				ready = false
-			}
-		}
-
-		if global.GVA_CONFIG != nil && global.GVA_CONFIG.Redis.Enabled && global.GVA_REDIS == nil {
-			ready = false
-		}
-
-		if ready && global.GVA_REDIS != nil {
-			ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-			defer cancel()
-
-			start := time.Now()
-			if err := global.GVA_REDIS.Ping(ctx).Err(); err != nil {
-				ready = false
-			} else {
-				observability.SetRedisPing(time.Since(start))
-			}
-		}
-
-		statusCode := http.StatusOK
-		status := "ready"
-		if !ready {
-			statusCode = http.StatusServiceUnavailable
-			status = "not_ready"
-		}
-
-		c.JSON(statusCode, gin.H{
-			"status": status,
-		})
-	})
+	Router.GET("/readyz", readyzHandler(true))
 
 	if global.GVA_CONFIG == nil || global.GVA_CONFIG.Metrics.Enabled {
 		Router.GET("/metrics", gin.WrapH(promhttp.Handler()))
@@ -128,6 +143,9 @@ func InitRouter() *gin.Engine {
 				"tracing_enabled": observability.TracerEnabled(),
 			})
 		})
+
+		// 就绪探针（供熔断验证等使用，会执行 DB/Redis Ping 驱动熔断状态）
+		apiRouter.GET("/readyz", readyzHandler(false))
 
 		// 认证相关（无需JWT）
 		InitAuthRouter(apiRouter)

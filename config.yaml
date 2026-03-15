@@ -70,6 +70,19 @@ tracing:
   endpoint: localhost:4317
   service: bookadmin-api
 
+resilience:
+  rate-limit:
+    enabled: true
+    rps: 100
+    burst: 50
+    per-ip: true
+  circuit-breaker:
+    enabled: true
+    max-requests: 3
+    interval: 10
+    timeout: 30
+    failure-threshold: 5
+
 migration:
   auto-migrate: false  # 改为 false 跳过启动时自动迁移；需要时执行: go run main.go --mode=migrate
 
