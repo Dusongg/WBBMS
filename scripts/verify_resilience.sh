@@ -9,13 +9,18 @@
 #   REDIS_CONTAINER    - Redis 容器名，默认 bookadmin-redis
 #
 # 限流验证：快速并发请求非健康检查路径，统计 200/429 比例，出现 429 即通过
-# 熔断验证：停止 Redis → 触发熔断 → 业务接口返回 503 → 恢复 Redis → 等待半开
+# 熔断验证：停止 Redis → 连续请求 readyz 触发熔断（24 次以应对 3 实例负载均衡）→ 业务接口应返回 503
 #
 # 前提：全栈已启动（docker compose up -d）或本地 go run，且 config.yaml 中
 #       resilience.rate-limit.enabled=true、resilience.circuit-breaker.enabled=true
 
 set -e
 BASE="${BASE_URL:-http://localhost}"
+
+# 清洗 HTTP 状态码（去除 \r\n 等），避免终端显示乱码
+clean_http_code() {
+  echo "$1" | tr -d '\r\n' | grep -oE '[0-9]{3}' || echo "000"
+}
 REDIS_CONTAINER="${REDIS_CONTAINER:-bookadmin-redis}"
 
 # 限流测试使用的路径（需为非 skip 路径：非 /healthz、/readyz、/metrics、/api/healthz、/api/readyz）
@@ -38,12 +43,13 @@ if [ "${SKIP_RATE_LIMIT}" != "1" ]; then
   echo "（若未出现 429，可尝试将 config.yaml 中 rate-limit.rps 调小如 10 以便验证）"
   echo ""
 
-  RESULT=$(seq 1 250 2>/dev/null | xargs -P 30 -I {} curl -s -o /dev/null -w "%{http_code}\n" "$RATE_LIMIT_PATH" 2>/dev/null || true)
+  RESULT=$(seq 1 250 2>/dev/null | xargs -P 30 -I {} curl -s -o /dev/null -w "%{http_code}\n" "$RATE_LIMIT_PATH" 2>/dev/null | tr -d '\r' || true)
   if [ -z "$RESULT" ]; then
     # fallback when xargs/seq differ (e.g. macOS)
     COUNTS=""
     for i in $(seq 1 250 2>/dev/null || jot 250 1 250 2>/dev/null || echo "1 2 3"); do
-      CODE=$(curl -s -o /dev/null -w "%{http_code}" "$RATE_LIMIT_PATH" 2>/dev/null || echo "000")
+      RAW=$(curl -s -o /dev/null -w "%{http_code}" "$RATE_LIMIT_PATH" 2>/dev/null)
+      CODE=$(clean_http_code "$RAW")
       COUNTS="${COUNTS}${CODE}"$'\n'
     done
     RESULT=$(echo "$COUNTS" | grep -v '^$')
@@ -80,19 +86,22 @@ if [ "${SKIP_CIRCUIT_BREAKER}" != "1" ]; then
     docker stop "$REDIS_CONTAINER" 2>/dev/null || true
     sleep 2
 
-    echo "2.2 连续请求 $READYZ_PATH 以触发熔断（失败阈值默认 5）..."
-    for i in $(seq 1 8); do
-      CODE=$(curl -s -o /dev/null -w "%{http_code}" "$READYZ_PATH" 2>/dev/null || echo "000")
-      echo "  请求 $i: HTTP $CODE"
+    echo "2.2 连续请求 $READYZ_PATH 以触发熔断（失败阈值 5，多实例时需更多请求确保单实例达到阈值）..."
+    for i in $(seq 1 24); do
+      RAW=$(curl -s -o /dev/null -w "%{http_code}" "$READYZ_PATH" 2>/dev/null)
+      CODE=$(clean_http_code "$RAW")
+      printf "  请求 %d: HTTP %s\n" "$i" "$CODE"
     done
 
     echo ""
     echo "2.3 检查业务接口是否因熔断返回 503..."
-    CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BUSINESS_PATH" 2>/dev/null || echo "000")
+    RAW=$(curl -s -o /dev/null -w "%{http_code}" "$BUSINESS_PATH" 2>/dev/null)
+    CODE=$(clean_http_code "$RAW")
     if [ "$CODE" = "503" ]; then
       echo "✓ 熔断已打开，业务接口返回 503"
     else
-      echo "  当前返回 HTTP $CODE（若熔断未打开，可能为 200/500 等）"
+      printf "  当前返回 HTTP %s\n" "$CODE"
+      echo "  说明：多实例时熔断为实例级，24 次 readyz 应使各实例均达到阈值；若仍为 200 可再增加请求次数"
     fi
 
     echo ""
@@ -103,9 +112,10 @@ if [ "${SKIP_CIRCUIT_BREAKER}" != "1" ]; then
 
     echo ""
     echo "2.5 熔断超时约 30 秒后进入半开，可稍后再次请求验证恢复。"
-    echo "  当前再试一次 $BUSINESS_PATH："
-    CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BUSINESS_PATH" 2>/dev/null || echo "000")
-    echo "  HTTP $CODE"
+    printf "  当前再试一次 %s：\n" "$BUSINESS_PATH"
+    RAW=$(curl -s -o /dev/null -w "%{http_code}" "$BUSINESS_PATH" 2>/dev/null)
+    CODE=$(clean_http_code "$RAW")
+    printf "  HTTP %s\n" "$CODE"
   fi
   echo ""
 else
